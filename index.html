@@ -806,9 +806,7 @@ function newInvoice() {
     const invoiceDate = `${year}-${String(month+1).padStart(2,'0')}-${String(lastDay.getDate()).padStart(2,'0')}`;
     currentId = null;
     shifts = [createShift()];
-    const monthName = MONTHS_DE[month];
-    const nurseShort = (settings.name || '').trim();
-    document.getElementById('f-nr').value = nurseShort ? `${nurseShort} ${monthName} ${year}` : nextNr();
+    document.getElementById('f-nr').value = nextNr();
     document.getElementById('f-date').value = invoiceDate;
     document.getElementById('f-due').value = calcDueDate(invoiceDate, shifts);
     document.getElementById('f-cname').value = 'Sarah Salin';
@@ -1211,12 +1209,17 @@ function saveAndPreview() {
   showView('preview');
 }
 
+function _invoiceTitle(inv) {
+  const d = new Date((inv.date || today()) + 'T00:00:00');
+  const monat = MONTHS_DE[d.getMonth()];
+  const name = (settings.name || '').trim();
+  return name ? `${name} ${monat} ${d.getFullYear()}` : `Rechnung ${monat} ${d.getFullYear()}`;
+}
+
 function openMailForInvoice() {
   const inv = _currentPreviewInv;
   if (!inv) return;
-  // Betreff aus Rechnungsnummer (enthält bereits Name + Monat) oder Fallback
-  const subject = inv.nr || `Rechnung ${settings.name || ''} ${today().slice(0,7)}`;
-  window.location.href = `mailto:?subject=${encodeURIComponent(subject)}`;
+  window.location.href = `mailto:?subject=${encodeURIComponent(_invoiceTitle(inv))}`;
 }
 
 function doPrint() {
@@ -1226,10 +1229,12 @@ function doPrint() {
   // iOS: sauberes Druckfenster mit eigenem Print-Button öffnen
   const area = document.getElementById('preview-area').innerHTML;
   const style = document.querySelector('style').textContent;
+  const pdfTitle = _currentPreviewInv ? _invoiceTitle(_currentPreviewInv).replace(/\s+/g, '_') : 'Rechnung';
   const win = window.open('', '_blank');
   if (!win) { alert('Bitte Pop-ups für diese Seite erlauben und erneut tippen.'); return; }
   win.document.write(`<!DOCTYPE html><html lang="de"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${pdfTitle}</title>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600&family=DM+Sans:wght@300;400;500;700&display=swap" rel="stylesheet">
 <style>
 ${style}
