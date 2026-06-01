@@ -1,0 +1,1458 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>PflegeRechnung Pro</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600&family=DM+Sans:wght@300;400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --sand: #F5F0E8;
+    --warm-white: #FDFAF5;
+    --sage: #7A9E8E;
+    --sage-light: #A8C4B8;
+    --sage-dark: #4E7A6A;
+    --terracotta: #C27B5A;
+    --ink: #2C2820;
+    --ink-soft: #5C5248;
+    --ink-faint: #9C9088;
+    --border: #DDD8CE;
+    --shadow: rgba(44,40,32,0.08);
+    --danger-bg: #FFF0EC;
+    --danger-fg: #C04A2A;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--sand);
+    color: var(--ink);
+    min-height: 100vh;
+    font-size: 16px;
+  }
+  .view { display: none; }
+  .view.active { display: block; }
+  .app-header {
+    background: var(--warm-white);
+    border-bottom: 1px solid var(--border);
+    padding: 20px 28px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky; top: 0; z-index: 50;
+  }
+  .logo { font-family: 'Playfair Display', serif; font-size: 1.3rem; color: var(--sage-dark); }
+  .logo span { color: var(--terracotta); }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    border: none; cursor: pointer; border-radius: 10px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.92rem; font-weight: 500; line-height: 1;
+    transition: all 0.2s ease;
+    padding: 12px 18px;
+  }
+  .btn-primary { background: var(--sage-dark); color: #fff; }
+  .btn-primary:hover { background: var(--sage); }
+  .btn-ghost { background: transparent; color: var(--ink-soft); border: 1.5px solid var(--border); }
+  .btn-ghost:hover { border-color: var(--sage); color: var(--sage-dark); }
+  .btn-danger { background: var(--danger-bg); color: var(--danger-fg); border: 1.5px solid #F5C5B5; }
+  .btn-danger:hover { background: #FADED8; }
+  .btn-print { background: var(--terracotta); color: #fff; }
+  .btn-print:hover { background: #A86840; }
+  .btn-sm { padding: 9px 14px; font-size: 0.82rem; }
+  .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+  .list-header { padding: 32px 28px 20px; display:flex; align-items:flex-end; justify-content:space-between; gap:16px; }
+  .list-title { font-family: 'Playfair Display', serif; font-size: 2rem; font-weight: 500; }
+  .list-subtitle { color: var(--ink-faint); font-size: 0.87rem; margin-top: 4px; }
+  .invoice-list { padding: 0 28px 40px; display: flex; flex-direction: column; gap: 12px; }
+  .invoice-card {
+    background: var(--warm-white);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 20px 22px;
+    display: flex; align-items: center; justify-content: space-between;
+    cursor: pointer; transition: all 0.2s;
+  }
+  .invoice-card:hover { border-color: var(--sage); box-shadow: 0 4px 16px var(--shadow); }
+  .invoice-card-left { display: flex; align-items: center; gap: 16px; min-width: 0; }
+  .card-avatar {
+    width: 44px; height: 44px; border-radius: 50%; background: var(--sage-light); color: var(--sage-dark);
+    display:flex; align-items:center; justify-content:center; font-size:1rem; font-weight:700; flex-shrink:0;
+  }
+  .card-name { font-weight: 600; font-size: 1rem; }
+  .card-meta { color: var(--ink-faint); font-size: 0.83rem; margin-top: 2px; }
+  .card-amount { font-family: 'Playfair Display', serif; font-size: 1.25rem; color: var(--sage-dark); white-space: nowrap; }
+  .badge { display:inline-block; padding:4px 10px; border-radius:20px; font-size:0.74rem; font-weight:600; }
+  .badge-open { background:#FFF4E6; color:#B06000; }
+  .badge-paid { background:#EAF4F0; color:#2E7A5A; }
+  .badge-draft { background: var(--sand); color: var(--ink-faint); }
+  .empty-state { text-align:center; padding:80px 40px; color: var(--ink-faint); }
+  .empty-icon { font-size:3rem; margin-bottom:16px; }
+
+  .form-container { max-width: 980px; margin:0 auto; padding:28px 28px 96px; }
+  .form-section {
+    background: var(--warm-white); border:1px solid var(--border); border-radius:16px;
+    padding:24px; margin-bottom:20px;
+  }
+  .section-title {
+    font-family:'Playfair Display', serif; font-size:1.08rem; font-weight:500; color: var(--sage-dark);
+    margin-bottom:20px; padding-bottom:12px; border-bottom:1px solid var(--border);
+  }
+  .form-row { display:flex; gap:14px; flex-wrap:wrap; }
+  .form-group { display:flex; flex-direction:column; gap:6px; flex:1; min-width: 180px; }
+  .form-group label {
+    font-size:0.78rem; font-weight:700; color: var(--ink-soft);
+    text-transform:uppercase; letter-spacing:0.06em;
+  }
+  .form-group input, .form-group select, .form-group textarea {
+    border:1.5px solid var(--border); border-radius:10px; padding:12px 14px;
+    font-family:'DM Sans', sans-serif; font-size:0.95rem; color: var(--ink); background: var(--warm-white);
+    outline:none; transition:border-color 0.2s; width:100%;
+  }
+  .form-group textarea { resize: vertical; min-height: 72px; }
+  .form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color: var(--sage); }
+  .hint { color: var(--ink-faint); font-size: 0.82rem; margin-top: 4px; line-height: 1.45; }
+  .pill {
+    display:inline-flex; align-items:center; gap:6px; background:var(--sand); color:var(--ink-soft);
+    border-radius:999px; padding:8px 12px; font-size:0.82rem; font-weight:500;
+  }
+
+  .shift-card {
+    border: 1px solid var(--border); border-radius: 14px; padding: 16px; background: #fff;
+    margin-bottom: 14px;
+  }
+  .shift-header {
+    display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:12px;
+  }
+  .shift-title { font-weight:700; }
+  .checkbox-line { display:flex; align-items:center; gap:10px; padding:12px 14px; border:1px dashed var(--border); border-radius:12px; min-height:48px; }
+  .checkbox-line input { width:18px; height:18px; }
+  .result-grid { display:grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap:12px; margin-top:14px; }
+  .result-box { background: var(--sand); border-radius:12px; padding:12px; }
+  .result-box .k { font-size:0.74rem; color:var(--ink-faint); text-transform:uppercase; letter-spacing:0.06em; }
+  .result-box .v { margin-top:6px; font-weight:700; }
+  .breakdown {
+    margin-top:14px; border-top:1px solid var(--border); padding-top:12px; display:flex; flex-direction:column; gap:6px;
+    font-size:0.88rem;
+  }
+  .breakdown-row { display:flex; justify-content:space-between; gap:16px; color: var(--ink-soft); }
+  .warning {
+    margin-top: 12px; background: #FFF8E8; border: 1px solid #E9D5A8; color: #7F5D17;
+    padding: 11px 13px; border-radius: 12px; font-size: 0.86rem; line-height: 1.45;
+  }
+
+  .total-box { display:flex; flex-direction:column; align-items:flex-end; gap:6px; margin-top:18px; padding-top:14px; border-top:1px solid var(--border); }
+  .total-line { display:flex; gap:40px; font-size:0.92rem; color: var(--ink-soft); }
+  .total-line .lbl { min-width: 180px; text-align:right; }
+  .total-line .val { min-width: 120px; text-align:right; font-variant-numeric: tabular-nums; }
+  .total-grand { font-family:'Playfair Display', serif; font-size:1.42rem; color:var(--ink); }
+
+  .form-actions {
+    position: fixed; bottom:0; left:0; right:0; z-index:40;
+    background: rgba(253,250,245,0.96); backdrop-filter: blur(10px);
+    border-top: 1px solid var(--border); padding: 14px 28px;
+    display:flex; gap:12px; justify-content:flex-end; flex-wrap:wrap;
+  }
+
+  .preview-toolbar {
+    background: var(--warm-white); border-bottom:1px solid var(--border);
+    padding:14px 28px; display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+  }
+  .preview-paper {
+    max-width: 760px; margin:32px auto 60px; background:#fff; border:1px solid var(--border);
+    border-radius:16px; padding:56px; box-shadow:0 8px 32px var(--shadow);
+  }
+  .invoice-header-row { display:flex; justify-content:space-between; align-items:flex-start; gap:28px; margin-bottom:40px; }
+  .invoice-from h2 { font-family:'Playfair Display', serif; font-size:1.6rem; color:var(--ink); margin-bottom:8px; }
+  .invoice-from p { font-size:0.9rem; color: var(--ink); line-height:1.7; }
+  .invoice-number-block { text-align:right; }
+  .invoice-label { font-size:0.75rem; text-transform:uppercase; letter-spacing:0.1em; color:var(--ink); font-weight:700; }
+  .invoice-num { font-family:'Playfair Display', serif; font-size:1.9rem; color:var(--ink); }
+  .invoice-date { font-size:0.85rem; color:var(--ink); margin-top:6px; line-height:1.7; }
+  .recipient-block { background:#F3EEE5; border-radius:10px; padding:18px 22px; margin-bottom:28px; }
+  .recipient-block h3 { font-size:0.75rem; text-transform:uppercase; letter-spacing:0.08em; color: var(--ink); font-weight:700; margin-bottom:8px; }
+  .recipient-block p { font-size:0.92rem; line-height:1.7; color:var(--ink); }
+  .preview-table { width:100%; border-collapse: collapse; margin-bottom:24px; }
+  .preview-table th {
+    background:#EFE8DD; font-size:0.76rem; text-transform:uppercase; letter-spacing:0.07em; color: var(--ink);
+    padding:10px 12px; text-align:left; font-weight:700;
+  }
+  .preview-table td { padding:12px; font-size:0.9rem; border-bottom:1px solid var(--border); vertical-align:top; }
+  .preview-table th:last-child, .preview-table td:last-child { text-align:right; }
+  .preview-totals { display:flex; flex-direction:column; align-items:flex-end; gap:8px; margin-bottom:36px; }
+  .preview-total-row { display:flex; gap:48px; font-size:0.92rem; color:var(--ink); }
+  .preview-total-row .t-lbl { color:var(--ink); min-width:180px; text-align:right; }
+  .preview-total-row .t-val { min-width:120px; text-align:right; font-variant-numeric: tabular-nums; color:var(--ink); }
+  .preview-total-grand { font-family:'Playfair Display', serif; font-size:1.42rem; border-top:2px solid var(--ink); padding-top:10px; color:var(--ink); }
+  .preview-footer { border-top:1px solid var(--border); padding-top:20px; display:grid; grid-template-columns: 1.1fr 0.9fr 200px; gap:24px; align-items:start; }
+  .preview-footer p, .preview-footer div { font-size:0.84rem; color:var(--ink); line-height:1.7; }
+  .preview-subsection-title { color: var(--ink); font-weight:700; font-size:0.8rem; margin-bottom:6px; }
+  .preview-mini-note { font-size:0.82rem; color:var(--ink); margin-top:10px; }
+  .qr-block { text-align:center; }
+  .qr-code { width:180px; height:180px; display:block; margin:0 auto 8px; border:1px solid #C8BFB2; padding:6px; background:#fff; }
+  .qr-caption { font-size:0.76rem; color:var(--ink); line-height:1.4; }
+
+  .modal-overlay {
+    display:none; position:fixed; inset:0; background:rgba(44,40,32,0.4); backdrop-filter: blur(4px);
+    z-index:100; align-items:center; justify-content:center; padding:20px;
+  }
+  .modal-overlay.open { display:flex; }
+  .modal {
+    background:var(--warm-white); border-radius:20px; padding:28px; width:100%; max-width: 760px;
+    max-height:90vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,0.2);
+  }
+  .modal h2 { font-family:'Playfair Display', serif; font-size:1.45rem; margin-bottom:22px; }
+  .rule-card { border:1px solid var(--border); border-radius:14px; padding:14px; margin-bottom:12px; background:#fff; }
+  .rule-card-header { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px; }
+  .rule-name { font-weight:700; }
+
+  @media (max-width: 820px) {
+    .app-header, .list-header, .invoice-list, .form-container, .preview-toolbar { padding-left:16px; padding-right:16px; }
+    .form-actions { padding-left:16px; padding-right:16px; }
+    .invoice-card { align-items:flex-start; gap:14px; }
+    .result-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+    .preview-paper { margin: 20px 16px 50px; padding: 26px 20px; }
+    .invoice-header-row, .preview-footer { display:block; }
+    .invoice-number-block { text-align:left; margin-top:20px; }
+    .preview-total-row { gap:20px; width:100%; justify-content:flex-end; }
+    .preview-total-row .t-lbl { min-width: 130px; }
+    .preview-total-row .t-val { min-width: 95px; }
+  }
+
+  @media print {
+    body { background:#fff; }
+    .app-header, .preview-toolbar, .form-actions, #open-settings-fab { display:none !important; }
+    .preview-paper { border:none; box-shadow:none; border-radius:0; margin:0; padding:18mm 16mm; max-width:100%; }
+  }
+</style>
+</head>
+<body>
+
+<div id="view-list" class="view active">
+  <header class="app-header">
+    <div class="logo">Pflege<span>Rechnung Pro</span></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-ghost btn-sm" onclick="openSettings()">⚙ Einstellungen</button>
+      <button class="btn btn-primary" onclick="newInvoice()">+ Neue Rechnung</button>
+    </div>
+  </header>
+  <div class="list-header">
+    <div>
+      <div class="list-title">Rechnungen</div>
+      <div class="list-subtitle" id="list-count">Keine Rechnungen vorhanden</div>
+    </div>
+    <div class="pill">Lokal gespeichert im Browser</div>
+  </div>
+  <div class="invoice-list" id="invoice-list">
+    <div class="empty-state">
+      <div class="empty-icon">🌿</div>
+      <p>Noch keine Rechnungen.<br>Erstelle deine erste Rechnung.</p>
+    </div>
+  </div>
+</div>
+
+<div id="view-form" class="view">
+  <header class="app-header">
+    <div class="logo">Pflege<span>Rechnung Pro</span></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-ghost btn-sm" onclick="openSettings()">⚙ Einstellungen</button>
+      <button class="btn btn-ghost btn-sm" onclick="showList()">← Zurück</button>
+    </div>
+  </header>
+
+  <div class="form-container">
+    <div style="margin-bottom:24px;display:flex;align-items:flex-end;justify-content:space-between;gap:14px;flex-wrap:wrap">
+      <div>
+        <div class="list-title" style="font-family:'Playfair Display',serif;font-size:1.65rem" id="form-title">Neue Rechnung</div>
+        <div class="list-subtitle">Pflegeeinsätze mit automatischen Zuschlägen</div>
+      </div>
+      <div class="pill">Keine Mehrwertsteuer bei Pflegeleistungen</div>
+    </div>
+
+    <div class="form-section">
+      <div class="section-title">Rechnungsdaten</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Rechnungsnummer</label>
+          <input type="text" id="f-nr" placeholder="z.B. 2026-001">
+        </div>
+        <div class="form-group">
+          <label>Rechnungsdatum</label>
+          <input type="date" id="f-date">
+        </div>
+        <div class="form-group">
+          <label>Fälligkeitsdatum</label>
+          <input type="date" id="f-due">
+        </div>
+        <div class="form-group">
+          <label>Status</label>
+          <select id="f-status">
+            <option value="draft">Entwurf</option>
+            <option value="open">Offen</option>
+            <option value="paid">Bezahlt</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="section-title" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+        <span>Empfänger / Patient</span>
+        <div class="hint">Kundendaten und Konditionen können gespeichert und wiederverwendet werden.</div>
+      </div>
+      <div class="form-row" style="margin-bottom:14px">
+        <div class="form-group" style="flex:2">
+          <label>Gespeicherter Kunde</label>
+          <select id="f-client-select" onchange="applySelectedClient(this.value)">
+            <option value="">— Bitte wählen —</option>
+          </select>
+        </div>
+        <div class="form-group" style="flex:1;min-width:220px;justify-content:flex-end">
+          <label>&nbsp;</label>
+          <button class="btn btn-ghost" type="button" onclick="saveCurrentAsClient()">Aktuelle Daten als Kunde speichern</button>
+        </div>
+      </div>
+      <div class="form-row" style="margin-bottom:14px">
+        <div class="form-group" style="flex:2">
+          <label>Name</label>
+          <input type="text" id="f-cname" placeholder="Vorname Nachname">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="flex:3">
+          <label>Straße und Hausnummer</label>
+          <input type="text" id="f-cstreet" placeholder="Musterstraße 12">
+        </div>
+        <div class="form-group" style="flex:1;min-width:90px">
+          <label>PLZ</label>
+          <input type="text" id="f-cplz" placeholder="12345">
+        </div>
+        <div class="form-group" style="flex:2">
+          <label>Ort</label>
+          <input type="text" id="f-ccity" placeholder="Berlin">
+        </div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="section-title" style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap">
+        <span>Pflegeeinsätze</span>
+        <button class="btn btn-ghost btn-sm" onclick="addShift()">+ Einsatz hinzufügen</button>
+      </div>
+      <div class="hint" style="margin-bottom:14px">
+        Jede Schicht wird automatisch auf Grundvergütung, Nacht-, Wochenend- und Feiertagszuschläge geprüft. Überlappende Zuschläge werden addiert.
+      </div>
+      <div id="shifts-container"></div>
+
+      <div class="total-box">
+        <div class="total-line">
+          <span class="lbl">Grundbetrag</span>
+          <span class="val" id="t-base">0,00 €</span>
+        </div>
+        <div class="total-line">
+          <span class="lbl">Zuschläge</span>
+          <span class="val" id="t-surcharge">0,00 €</span>
+        </div>
+        <div class="total-line total-grand">
+          <span class="lbl">Gesamtbetrag</span>
+          <span class="val" id="t-total">0,00 €</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="section-title">Weitere Angaben</div>
+      <div class="form-row">
+        <div class="form-group" style="flex:2">
+          <label>Einleitung</label>
+          <textarea id="f-intro" rows="3" placeholder="Abrechnung der erbrachten Pflegeleistungen."></textarea>
+        </div>
+      </div>
+      <div class="form-row" style="margin-top:14px">
+        <div class="form-group" style="flex:2">
+          <label>Hinweise</label>
+          <textarea id="f-note" rows="4" placeholder="Bitte überweisen Sie den Betrag auf das unten genannte Konto."></textarea>
+        </div>
+      </div>
+    </div>
+
+    <div style="height:70px"></div>
+  </div>
+
+  <div class="form-actions">
+    <button class="btn btn-danger" id="btn-delete" onclick="deleteInvoice()" style="display:none">🗑 Löschen</button>
+    <button class="btn btn-ghost" onclick="saveInvoice('draft')">Entwurf speichern</button>
+    <button class="btn btn-primary" onclick="saveAndPreview()">Vorschau & Drucken →</button>
+  </div>
+</div>
+
+<div id="view-preview" class="view">
+  <header class="app-header">
+    <div class="logo">Pflege<span>Rechnung Pro</span></div>
+  </header>
+  <div class="preview-toolbar">
+    <button class="btn btn-ghost btn-sm" onclick="backToForm()">← Bearbeiten</button>
+    <button class="btn btn-print" onclick="window.print()">🖨 Drucken / PDF</button>
+    <button class="btn btn-primary btn-sm" onclick="saveInvoice('open');showList()">✓ Speichern</button>
+  </div>
+  <div style="padding:0 16px" id="preview-area"></div>
+</div>
+
+<div class="modal-overlay" id="settings-modal">
+  <div class="modal">
+    <h2>⚙ Einstellungen</h2>
+
+    <div class="form-section" style="margin-bottom:16px">
+      <div class="section-title">Meine Daten</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Name / Firma</label>
+          <input type="text" id="s-name" placeholder="Anna Muster">
+        </div>
+        <div class="form-group">
+          <label>Berufsbezeichnung</label>
+          <input type="text" id="s-beruf" placeholder="Freiberufliche Pflegefachkraft">
+        </div>
+      </div>
+      <div class="form-row" style="margin-top:14px">
+        <div class="form-group" style="flex:2">
+          <label>Adresse</label>
+          <input type="text" id="s-addr" placeholder="Musterstraße 5, 10115 Berlin">
+        </div>
+        <div class="form-group">
+          <label>Kontakt</label>
+          <input type="text" id="s-contact" placeholder="0176 000000 · anna@example.de">
+        </div>
+      </div>
+      <div class="form-row" style="margin-top:14px">
+        <div class="form-group">
+          <label>Steuernummer</label>
+          <input type="text" id="s-steuernr" placeholder="optional">
+        </div>
+        <div class="form-group">
+          <label>Standard-Stundensatz (€)</label>
+          <input type="number" id="s-rate" min="0" step="0.5" placeholder="38">
+        </div>
+        <div class="form-group">
+          <label>Zahlungsziel (Tage)</label>
+          <input type="number" id="s-payment-days" min="1" step="1" placeholder="14">
+        </div>
+      </div>
+      <div class="form-row" style="margin-top:14px">
+        <div class="form-group" style="flex:2">
+          <label>Text zur Steuerfreiheit</label>
+          <input type="text" id="s-tax-note" placeholder="Gemäß § 4 Nr. 14 UStG wird keine Umsatzsteuer berechnet.">
+        </div>
+      </div>
+    </div>
+
+    <div class="form-section" style="margin-bottom:16px">
+      <div class="section-title">Bankverbindung</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Kontoinhaber:in</label>
+          <input type="text" id="s-bank-holder" placeholder="Anna Muster">
+        </div>
+        <div class="form-group">
+          <label>Bank</label>
+          <input type="text" id="s-bank-name" placeholder="Musterbank">
+        </div>
+      </div>
+      <div class="form-row" style="margin-top:14px">
+        <div class="form-group">
+          <label>IBAN</label>
+          <input type="text" id="s-bank-iban" placeholder="DE12 3456 7890 1234 5678 90">
+        </div>
+        <div class="form-group">
+          <label>BIC</label>
+          <input type="text" id="s-bank-bic" placeholder="optional">
+        </div>
+      </div>
+    </div>
+
+    <div class="form-section" style="margin-bottom:16px">
+      <div class="section-title" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+        <span>Zuschlagsregeln</span>
+        <button class="btn btn-ghost btn-sm" onclick="addRule()">+ Regel hinzufügen</button>
+      </div>
+      <div class="hint" style="margin-bottom:12px">Typische Voreinstellung: Nacht 20–6 Uhr, Wochenende Samstag/Sonntag ganztägig, Feiertag per Häkchen am Einsatz.</div>
+      <div id="rules-container"></div>
+    </div>
+
+    <div class="form-section" style="margin-bottom:16px">
+      <div class="section-title" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+        <span>Gespeicherte Kund:innen</span>
+        <button class="btn btn-ghost btn-sm" onclick="addClientProfile()">+ Kunde hinzufügen</button>
+      </div>
+      <div class="hint" style="margin-bottom:12px">Hier kannst du Name, Adresse und wiederkehrende Konditionen pro Kunde hinterlegen. Beim Auswählen im Formular werden sie automatisch übernommen.</div>
+      <div id="clients-container"></div>
+    </div>
+
+    <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap">
+      <button class="btn btn-ghost" onclick="closeSettings()">Abbrechen</button>
+      <button class="btn btn-primary" onclick="saveSettings()">Speichern</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const STORAGE_KEY_INVOICES = 'pflegepro_invoices_v1';
+const STORAGE_KEY_SETTINGS = 'pflegepro_settings_v1';
+
+const defaultSettings = {
+  name: '',
+  beruf: 'Freiberufliche Pflegefachkraft',
+  addr: '',
+  contact: '',
+  steuernr: '',
+  defaultRate: 38,
+  paymentDays: 14,
+  taxNote: 'Gemäß § 4 Nr. 14 UStG wird keine Umsatzsteuer berechnet.',
+  bankHolder: '',
+  bankName: '',
+  bankIban: '',
+  bankBic: '',
+  clients: [],
+  surchargeRules: [
+    { id: uid(), name: 'Nachtschicht', type: 'night', percent: 25, startTime: '20:00', endTime: '06:00', active: true },
+    { id: uid(), name: 'Wochenende', type: 'weekend', percent: 25, startWeekday: 6, endWeekday: 0, startTime: '00:00', endTime: '24:00', active: true },
+    { id: uid(), name: 'Feiertag', type: 'holiday', percent: 50, active: true }
+  ]
+};
+
+let invoices = loadInvoices();
+let settings = loadSettings();
+let currentId = null;
+let shifts = [];
+
+function uid() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
+}
+
+function loadInvoices() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY_INVOICES) || '[]'); }
+  catch { return []; }
+}
+
+function normalizeRules(rules) {
+  if (!Array.isArray(rules) || !rules.length) return structuredClone(defaultSettings.surchargeRules);
+  return rules.map(rule => ({
+    id: rule.id || uid(),
+    name: rule.name || 'Zuschlag',
+    type: rule.type || 'night',
+    percent: Number(rule.percent ?? 0),
+    startTime: rule.startTime || '00:00',
+    endTime: rule.endTime || '24:00',
+    startWeekday: rule.startWeekday ?? 6,
+    endWeekday: rule.endWeekday ?? 0,
+    active: rule.active !== false
+  }));
+}
+
+function normalizeClients(clients) {
+  if (!Array.isArray(clients)) return [];
+  return clients.map(client => ({
+    id: client.id || uid(),
+    name: client.name || '',
+    street: client.street || '',
+    plz: client.plz || '',
+    city: client.city || '',
+    defaultRate: Number(client.defaultRate ?? 0),
+    paymentDays: Number(client.paymentDays ?? 0),
+    intro: client.intro || '',
+    note: client.note || ''
+  })).filter(client => client.name || client.street || client.city || client.note || client.intro);
+}
+
+function loadSettings() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY_SETTINGS) || '{}');
+    return {
+      ...structuredClone(defaultSettings),
+      ...raw,
+      clients: normalizeClients(raw.clients),
+      surchargeRules: normalizeRules(raw.surchargeRules)
+    };
+  } catch {
+    return structuredClone(defaultSettings);
+  }
+}
+
+function saveAllInvoices() {
+  localStorage.setItem(STORAGE_KEY_INVOICES, JSON.stringify(invoices));
+}
+
+function eur(n) {
+  return (Number(n) || 0).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+}
+function today() { return new Date().toISOString().slice(0, 10); }
+function addDays(isoDate, days) {
+  const dt = new Date(isoDate + 'T00:00:00');
+  dt.setDate(dt.getDate() + Number(days || 0));
+  return dt.toISOString().slice(0, 10);
+}
+function fmtDate(s) {
+  if (!s) return '';
+  const [y,m,d] = s.split('-');
+  return `${d}.${m}.${y}`;
+}
+function initials(name) {
+  return (name || '?').trim().split(/\s+/).map(w => w[0] || '').join('').toUpperCase().slice(0,2) || '?';
+}
+function nextNr() {
+  const year = new Date().getFullYear();
+  const nums = invoices
+    .map(i => parseInt(String(i.nr || '').split('-')[1] || 0, 10))
+    .filter(n => !isNaN(n));
+  const max = nums.length ? Math.max(...nums) : 0;
+  return `${year}-${String(max + 1).padStart(3, '0')}`;
+}
+function showView(id) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById('view-' + id).classList.add('active');
+  window.scrollTo(0, 0);
+}
+function showList() { renderList(); showView('list'); }
+function backToForm() { showView('form'); }
+
+function weekdayLabel(n) {
+  return ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'][Number(n)] || '–';
+}
+function timeToMinutes(t) {
+  if (!t) return 0;
+  if (t === '24:00') return 1440;
+  const parts = String(t).split(':').map(Number);
+  return (parts[0] || 0) * 60 + (parts[1] || 0);
+}
+function minutesToHours(mins) {
+  return ((Number(mins) || 0) / 60).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function createShift() {
+  return {
+    id: uid(),
+    description: 'Pflegeeinsatz',
+    startDate: today(),
+    startTime: '08:00',
+    endDate: today(),
+    endTime: '12:00',
+    rate: Number(settings.defaultRate || 0),
+    holiday: false,
+    notes: ''
+  };
+}
+
+function renderClientSelect(selectedId = '') {
+  const select = document.getElementById('f-client-select');
+  if (!select) return;
+  const clients = settings.clients || [];
+  select.innerHTML = '<option value="">— Bitte wählen —</option>' + clients.map(client =>
+    `<option value="${escapeAttr(client.id)}" ${selectedId === client.id ? 'selected' : ''}>${escapeHtml(client.name || 'Ohne Namen')}</option>`
+  ).join('');
+}
+
+function applyClientToForm(client, preserveSelection = false) {
+  if (!client) return;
+  document.getElementById('f-cname').value = client.name || '';
+  document.getElementById('f-cstreet').value = client.street || '';
+  document.getElementById('f-cplz').value = client.plz || '';
+  document.getElementById('f-ccity').value = client.city || '';
+  if (client.intro) document.getElementById('f-intro').value = client.intro;
+  if (client.note) document.getElementById('f-note').value = client.note;
+  const days = Number(client.paymentDays || settings.paymentDays || 14);
+  if (document.getElementById('f-date').value) {
+    document.getElementById('f-due').value = addDays(document.getElementById('f-date').value, days);
+  }
+  if (client.defaultRate) {
+    shifts = shifts.map(shift => ({ ...shift, rate: Number(client.defaultRate) }));
+    renderShifts();
+  }
+  if (!preserveSelection) document.getElementById('f-client-select').value = client.id || '';
+}
+
+function applySelectedClient(clientId) {
+  const client = (settings.clients || []).find(c => c.id === clientId);
+  if (!client) return;
+  applyClientToForm(client, true);
+}
+
+function getFormClientData() {
+  const issueDate = document.getElementById('f-date').value || today();
+  const dueDate = document.getElementById('f-due').value || addDays(issueDate, settings.paymentDays || 14);
+  const diff = Math.round((new Date(dueDate + 'T00:00:00') - new Date(issueDate + 'T00:00:00')) / 86400000);
+  return {
+    name: document.getElementById('f-cname').value.trim(),
+    street: document.getElementById('f-cstreet').value.trim(),
+    plz: document.getElementById('f-cplz').value.trim(),
+    city: document.getElementById('f-ccity').value.trim(),
+    defaultRate: shifts.length ? Number(shifts[0].rate || settings.defaultRate || 0) : Number(settings.defaultRate || 0),
+    paymentDays: diff > 0 ? diff : Number(settings.paymentDays || 14),
+    intro: document.getElementById('f-intro').value,
+    note: document.getElementById('f-note').value
+  };
+}
+
+function saveCurrentAsClient() {
+  const data = getFormClientData();
+  if (!data.name) {
+    alert('Bitte zuerst wenigstens einen Kundennamen eintragen.');
+    return;
+  }
+  const select = document.getElementById('f-client-select');
+  const existingId = select.value;
+  let clientId = existingId;
+  if (existingId) {
+    settings.clients = (settings.clients || []).map(client => client.id === existingId ? { ...client, ...data, id: existingId } : client);
+  } else {
+    clientId = uid();
+    settings.clients = [...(settings.clients || []), { id: clientId, ...data }];
+  }
+  settings.clients = normalizeClients(settings.clients);
+  localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify({ ...settings, clients: settings.clients }));
+  settings = loadSettings();
+  renderClientSelect(clientId);
+  alert(existingId ? 'Kundendaten aktualisiert.' : 'Kunde gespeichert.');
+}
+
+function newInvoice() {
+  currentId = null;
+  shifts = [createShift()];
+  document.getElementById('f-nr').value = nextNr();
+  document.getElementById('f-date').value = today();
+  document.getElementById('f-due').value = addDays(today(), settings.paymentDays || 14);
+  document.getElementById('f-status').value = 'open';
+  document.getElementById('f-cname').value = '';
+  document.getElementById('f-cstreet').value = '';
+  document.getElementById('f-cplz').value = '';
+  document.getElementById('f-ccity').value = '';
+  renderClientSelect('');
+  document.getElementById('f-intro').value = 'Abrechnung der erbrachten Pflegeleistungen.';
+  document.getElementById('f-note').value = 'Bitte überweisen Sie den Betrag ohne Abzug auf das unten genannte Konto.';
+  document.getElementById('form-title').textContent = 'Neue Rechnung';
+  document.getElementById('btn-delete').style.display = 'none';
+  renderShifts();
+  showView('form');
+}
+
+function editInvoice(id) {
+  const inv = invoices.find(i => i.id === id);
+  if (!inv) return;
+  currentId = id;
+  shifts = JSON.parse(JSON.stringify(inv.shifts || [createShift()]));
+  document.getElementById('f-nr').value = inv.nr || '';
+  document.getElementById('f-date').value = inv.date || today();
+  document.getElementById('f-due').value = inv.due || '';
+  document.getElementById('f-status').value = inv.status || 'open';
+  document.getElementById('f-cname').value = inv.cname || '';
+  document.getElementById('f-cstreet').value = inv.cstreet || '';
+  document.getElementById('f-cplz').value = inv.cplz || '';
+  document.getElementById('f-ccity').value = inv.ccity || '';
+  renderClientSelect(inv.clientId || '');
+  document.getElementById('f-intro').value = inv.intro || 'Abrechnung der erbrachten Pflegeleistungen.';
+  document.getElementById('f-note').value = inv.note || '';
+  document.getElementById('form-title').textContent = 'Rechnung bearbeiten';
+  document.getElementById('btn-delete').style.display = 'inline-flex';
+  renderShifts();
+  showView('form');
+}
+
+function duplicateInvoice(id) {
+  const inv = invoices.find(i => i.id === id);
+  if (!inv) return;
+  const copy = JSON.parse(JSON.stringify(inv));
+  copy.id = uid();
+  copy.nr = nextNr();
+  copy.status = 'draft';
+  invoices.push(copy);
+  saveAllInvoices();
+  renderList();
+}
+
+function deleteInvoice() {
+  if (!currentId) return;
+  if (!confirm('Rechnung wirklich löschen?')) return;
+  invoices = invoices.filter(i => i.id !== currentId);
+  saveAllInvoices();
+  showList();
+}
+
+function renderList() {
+  const el = document.getElementById('invoice-list');
+  const cnt = document.getElementById('list-count');
+  if (!invoices.length) {
+    el.innerHTML = '<div class="empty-state"><div class="empty-icon">🌿</div><p>Noch keine Rechnungen.<br>Erstelle deine erste Rechnung.</p></div>';
+    cnt.textContent = 'Keine Rechnungen vorhanden';
+    return;
+  }
+  const sorted = [...invoices].sort((a,b) => (b.date || '').localeCompare(a.date || ''));
+  cnt.textContent = `${invoices.length} Rechnung${invoices.length !== 1 ? 'en' : ''}`;
+  const badgeMap = { draft:'badge-draft', open:'badge-open', paid:'badge-paid' };
+  const labelMap = { draft:'Entwurf', open:'Offen', paid:'Bezahlt' };
+  el.innerHTML = sorted.map(inv => `
+    <div class="invoice-card" onclick="editInvoice('${inv.id}')">
+      <div class="invoice-card-left">
+        <div class="card-avatar">${initials(inv.cname)}</div>
+        <div>
+          <div class="card-name">${escapeHtml(inv.cname || 'Kein Name')}</div>
+          <div class="card-meta">Nr. ${escapeHtml(inv.nr || '–')} · ${fmtDate(inv.date || '')}</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;justify-content:flex-end">
+        <span class="badge ${badgeMap[inv.status] || 'badge-draft'}">${labelMap[inv.status] || 'Entwurf'}</span>
+        <div class="card-amount">${eur(inv.total || 0)}</div>
+        <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();duplicateInvoice('${inv.id}')">Kopie</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function addShift() {
+  shifts.push(createShift());
+  renderShifts();
+}
+
+function removeShift(index) {
+  if (shifts.length <= 1) return;
+  shifts.splice(index, 1);
+  renderShifts();
+}
+
+function updateShiftField(index, field, value, shouldRender = true) {
+  shifts[index][field] = value;
+  if (shouldRender) renderShifts();
+}
+
+function calculateShift(shift) {
+  const result = {
+    valid: true,
+    error: '',
+    totalMinutes: 0,
+    baseAmount: 0,
+    surchargeAmount: 0,
+    totalAmount: 0,
+    breakdown: []
+  };
+
+  if (!shift.startDate || !shift.startTime || !shift.endDate || !shift.endTime) {
+    result.valid = false;
+    result.error = 'Bitte Beginn und Ende vollständig eintragen.';
+    return result;
+  }
+
+  const start = new Date(`${shift.startDate}T${shift.startTime}:00`);
+  const end = new Date(`${shift.endDate}T${shift.endTime}:00`);
+  if (!(end > start)) {
+    result.valid = false;
+    result.error = 'Das Ende muss nach dem Beginn liegen.';
+    return result;
+  }
+
+  const hourlyRate = Number(shift.rate || 0);
+  const breakdownMap = new Map();
+  let cursor = new Date(start);
+
+  while (cursor < end) {
+    const next = new Date(cursor.getTime() + 60000);
+    result.totalMinutes += 1;
+
+    const minuteOfDay = cursor.getHours() * 60 + cursor.getMinutes();
+    const weekday = cursor.getDay();
+
+    settings.surchargeRules.filter(rule => rule.active !== false).forEach(rule => {
+      if (ruleMatches(rule, minuteOfDay, weekday, !!shift.holiday)) {
+        const amount = hourlyRate / 60 * (Number(rule.percent || 0) / 100);
+        result.surchargeAmount += amount;
+        const prev = breakdownMap.get(rule.id) || { name: rule.name, percent: Number(rule.percent || 0), minutes: 0, amount: 0 };
+        prev.minutes += 1;
+        prev.amount += amount;
+        breakdownMap.set(rule.id, prev);
+      }
+    });
+
+    cursor = next;
+  }
+
+  result.baseAmount = hourlyRate / 60 * result.totalMinutes;
+  result.totalAmount = result.baseAmount + result.surchargeAmount;
+  result.breakdown = Array.from(breakdownMap.values()).sort((a,b) => a.name.localeCompare(b.name));
+  return result;
+}
+
+function ruleMatches(rule, minuteOfDay, weekday, holidayFlag) {
+  const type = rule.type || 'night';
+  if (type === 'holiday') return holidayFlag;
+
+  const start = timeToMinutes(rule.startTime || '00:00');
+  const end = timeToMinutes(rule.endTime || '24:00');
+
+  if (type === 'night') {
+    if (start < end) return minuteOfDay >= start && minuteOfDay < end;
+    return minuteOfDay >= start || minuteOfDay < end;
+  }
+
+  if (type === 'weekend') {
+    const dayMatch = (() => {
+      const s = Number(rule.startWeekday ?? 6);
+      const e = Number(rule.endWeekday ?? 0);
+      if (s === 6 && e === 0) return weekday === 6 || weekday === 0;
+      if (s <= e) return weekday >= s && weekday <= e;
+      return weekday >= s || weekday <= e;
+    })();
+    if (!dayMatch) return false;
+    if (start === 0 && end === 1440) return true;
+    if (start < end) return minuteOfDay >= start && minuteOfDay < end;
+    return minuteOfDay >= start || minuteOfDay < end;
+  }
+
+  return false;
+}
+
+function renderShifts() {
+  const container = document.getElementById('shifts-container');
+  if (!shifts.length) shifts = [createShift()];
+
+  container.innerHTML = shifts.map((shift, index) => {
+    const calc = calculateShift(shift);
+    const breakdown = calc.breakdown.length ? `
+      <div class="breakdown">
+        ${calc.breakdown.map(item => `
+          <div class="breakdown-row">
+            <span>${escapeHtml(item.name)} (${item.percent} %) · ${minutesToHours(item.minutes)} h</span>
+            <span>${eur(item.amount)}</span>
+          </div>
+        `).join('')}
+      </div>
+    ` : '';
+
+    return `
+      <div class="shift-card">
+        <div class="shift-header">
+          <div class="shift-title">Einsatz ${index + 1}</div>
+          <button class="btn btn-danger btn-sm" onclick="removeShift(${index})" ${shifts.length <= 1 ? 'disabled' : ''}>Entfernen</button>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group" style="flex:2">
+            <label>Beschreibung</label>
+            <input type="text" value="${escapeAttr(shift.description || '')}" oninput="updateShiftField(${index}, 'description', this.value, false)" placeholder="Pflegeeinsatz">
+          </div>
+          <div class="form-group">
+            <label>Stundensatz (€)</label>
+            <input type="number" min="0" step="0.5" value="${escapeAttr(shift.rate ?? '')}" onchange="updateShiftField(${index}, 'rate', this.value, true)">
+          </div>
+        </div>
+
+        <div class="form-row" style="margin-top:14px">
+          <div class="form-group">
+            <label>Beginn Datum</label>
+            <input type="date" value="${escapeAttr(shift.startDate || '')}" onchange="updateShiftField(${index}, 'startDate', this.value, true)">
+          </div>
+          <div class="form-group">
+            <label>Beginn Uhrzeit</label>
+            <input type="time" value="${escapeAttr(shift.startTime || '')}" onchange="updateShiftField(${index}, 'startTime', this.value, true)">
+          </div>
+          <div class="form-group">
+            <label>Ende Datum</label>
+            <input type="date" value="${escapeAttr(shift.endDate || '')}" onchange="updateShiftField(${index}, 'endDate', this.value, true)">
+          </div>
+          <div class="form-group">
+            <label>Ende Uhrzeit</label>
+            <input type="time" value="${escapeAttr(shift.endTime || '')}" onchange="updateShiftField(${index}, 'endTime', this.value, true)">
+          </div>
+        </div>
+
+        <div class="form-row" style="margin-top:14px">
+          <div class="form-group" style="flex:1.3">
+            <div class="checkbox-line">
+              <input type="checkbox" ${shift.holiday ? 'checked' : ''} onchange="updateShiftField(${index}, 'holiday', this.checked)">
+              <div>
+                <div style="font-weight:700">Feiertag</div>
+                <div class="hint" style="margin-top:2px">Setze das Häkchen, wenn für diesen Einsatz Feiertagszuschlag gelten soll.</div>
+              </div>
+            </div>
+          </div>
+          <div class="form-group" style="flex:1.7">
+            <label>Interne Notiz</label>
+            <input type="text" value="${escapeAttr(shift.notes || '')}" oninput="updateShiftField(${index}, 'notes', this.value, false)" placeholder="optional">
+          </div>
+        </div>
+
+        ${calc.valid ? `
+          <div class="result-grid">
+            <div class="result-box"><div class="k">Dauer</div><div class="v">${minutesToHours(calc.totalMinutes)} h</div></div>
+            <div class="result-box"><div class="k">Grundbetrag</div><div class="v">${eur(calc.baseAmount)}</div></div>
+            <div class="result-box"><div class="k">Zuschläge</div><div class="v">${eur(calc.surchargeAmount)}</div></div>
+            <div class="result-box"><div class="k">Gesamt</div><div class="v">${eur(calc.totalAmount)}</div></div>
+          </div>
+          ${breakdown}
+        ` : `<div class="warning">${escapeHtml(calc.error)}</div>`}
+      </div>
+    `;
+  }).join('');
+
+  calcTotals();
+}
+
+function calcTotals() {
+  let base = 0;
+  let surcharge = 0;
+  let total = 0;
+  shifts.forEach(shift => {
+    const calc = calculateShift(shift);
+    if (calc.valid) {
+      base += calc.baseAmount;
+      surcharge += calc.surchargeAmount;
+      total += calc.totalAmount;
+    }
+  });
+  document.getElementById('t-base').textContent = eur(base);
+  document.getElementById('t-surcharge').textContent = eur(surcharge);
+  document.getElementById('t-total').textContent = eur(total);
+  return { base, surcharge, total };
+}
+
+function collectInvoice() {
+  const totals = calcTotals();
+  return {
+    id: currentId || uid(),
+    nr: document.getElementById('f-nr').value,
+    date: document.getElementById('f-date').value,
+    due: document.getElementById('f-due').value,
+    status: document.getElementById('f-status').value,
+    cname: document.getElementById('f-cname').value,
+    cstreet: document.getElementById('f-cstreet').value,
+    cplz: document.getElementById('f-cplz').value,
+    ccity: document.getElementById('f-ccity').value,
+    clientId: document.getElementById('f-client-select').value || '',
+    intro: document.getElementById('f-intro').value,
+    note: document.getElementById('f-note').value,
+    shifts: JSON.parse(JSON.stringify(shifts)),
+    base: totals.base,
+    surcharge: totals.surcharge,
+    total: totals.total,
+    taxFree: true
+  };
+}
+
+function saveInvoice(forcedStatus) {
+  const inv = collectInvoice();
+  if (forcedStatus) inv.status = forcedStatus;
+  const idx = invoices.findIndex(i => i.id === inv.id);
+  if (idx >= 0) invoices[idx] = inv; else invoices.push(inv);
+  currentId = inv.id;
+  saveAllInvoices();
+  return inv;
+}
+
+function aggregateBreakdowns(invoiceShifts) {
+  const map = new Map();
+  invoiceShifts.forEach(shift => {
+    const calc = calculateShift(shift);
+    calc.breakdown.forEach(item => {
+      const key = item.name + '|' + item.percent;
+      const prev = map.get(key) || { name: item.name, percent: item.percent, minutes: 0, amount: 0 };
+      prev.minutes += item.minutes;
+      prev.amount += item.amount;
+      map.set(key, prev);
+    });
+  });
+  return Array.from(map.values()).sort((a,b) => a.name.localeCompare(b.name));
+}
+
+function saveAndPreview() {
+  const inv = saveInvoice(null);
+  renderPreview(inv);
+  showView('preview');
+}
+
+function renderPreview(inv) {
+  const s = settings;
+  const breakdown = aggregateBreakdowns(inv.shifts);
+  const rows = inv.shifts.map(shift => {
+    const calc = calculateShift(shift);
+    const infoLine = calc.breakdown.length
+      ? calc.breakdown.map(item => `${escapeHtml(item.name)} ${item.percent}%: ${minutesToHours(item.minutes)} h`).join(' · ')
+      : 'Keine Zuschläge';
+    return `
+      <tr>
+        <td>
+          <div style="font-weight:700">${escapeHtml(shift.description || 'Pflegeeinsatz')}</div>
+          <div class="preview-mini-note">${fmtDate(shift.startDate)} ${escapeHtml(shift.startTime)} – ${fmtDate(shift.endDate)} ${escapeHtml(shift.endTime)}${shift.holiday ? ' · Feiertag markiert' : ''}</div>
+          <div class="preview-mini-note">${infoLine}</div>
+        </td>
+        <td>${fmtDate(shift.startDate)}</td>
+        <td>${minutesToHours(calc.totalMinutes)}</td>
+        <td>${eur(shift.rate || 0)}</td>
+        <td>${eur(calc.totalAmount)}</td>
+      </tr>
+    `;
+  }).join('');
+
+  const breakdownHtml = breakdown.length ? `
+    <div style="margin-bottom:24px">
+      <div class="preview-subsection-title">Zuschlagsaufschlüsselung</div>
+      ${breakdown.map(item => `
+        <div style="display:flex;justify-content:space-between;gap:18px;font-size:0.86rem;color:var(--ink);margin-top:4px">
+          <span>${escapeHtml(item.name)} (${item.percent} %) · ${minutesToHours(item.minutes)} h</span>
+          <span>${eur(item.amount)}</span>
+        </div>
+      `).join('')}
+    </div>
+  ` : '';
+
+  const bankLines = [s.bankHolder, s.bankName, s.bankIban ? 'IBAN: ' + s.bankIban : '', s.bankBic ? 'BIC: ' + s.bankBic : ''].filter(Boolean);
+  const epcPayload = buildEpcQrPayload(inv, s);
+  const qrImageUrl = buildQrImageUrl(epcPayload);
+
+  document.getElementById('preview-area').innerHTML = `
+    <div class="preview-paper">
+      <div class="invoice-header-row">
+        <div class="invoice-from">
+          <h2>${escapeHtml(s.name || 'Ihr Name')}</h2>
+          <p>
+            ${escapeHtml(s.beruf || '')}<br>
+            ${escapeHtml(s.addr || '')}<br>
+            ${escapeHtml(s.contact || '')}<br>
+            ${s.steuernr ? 'Steuernr.: ' + escapeHtml(s.steuernr) : ''}
+          </p>
+        </div>
+        <div class="invoice-number-block">
+          <div class="invoice-label">Rechnung</div>
+          <div class="invoice-num">${escapeHtml(inv.nr || '–')}</div>
+          <div class="invoice-date">Datum: ${fmtDate(inv.date)}<br>Fällig: ${fmtDate(inv.due)}</div>
+        </div>
+      </div>
+
+      <div class="recipient-block">
+        <h3>Rechnungsempfänger</h3>
+        <p>${escapeHtml(inv.cname || '–')}<br>${escapeHtml(inv.cstreet || '')}<br>${escapeHtml((inv.cplz || '') + ' ' + (inv.ccity || ''))}</p>
+      </div>
+
+      ${inv.intro ? `<p style="font-size:0.92rem;line-height:1.7;margin-bottom:20px;color:var(--ink)">${escapeHtml(inv.intro)}</p>` : ''}
+
+      <table class="preview-table">
+        <thead>
+          <tr>
+            <th style="border-radius:6px 0 0 6px">Leistung</th>
+            <th>Datum</th>
+            <th>Std.</th>
+            <th>€/Std.</th>
+            <th style="border-radius:0 6px 6px 0">Betrag</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+
+      ${breakdownHtml}
+
+      <div class="preview-totals">
+        <div class="preview-total-row">
+          <span class="t-lbl">Grundbetrag</span>
+          <span class="t-val">${eur(inv.base)}</span>
+        </div>
+        <div class="preview-total-row">
+          <span class="t-lbl">Zuschläge</span>
+          <span class="t-val">${eur(inv.surcharge)}</span>
+        </div>
+        <div class="preview-total-row preview-total-grand">
+          <span class="t-lbl">Gesamtbetrag</span>
+          <span class="t-val">${eur(inv.total)}</span>
+        </div>
+      </div>
+
+      <p style="font-size:0.82rem;color:var(--ink);margin-bottom:30px">${escapeHtml(s.taxNote || defaultSettings.taxNote)}</p>
+
+      <div class="preview-footer">
+        <div>
+          <div class="preview-subsection-title">Hinweise</div>
+          <p>${(inv.note || '').trim() ? nl2br(escapeHtml(inv.note)) : 'Bitte überweisen Sie den Rechnungsbetrag ohne Abzug.'}</p>
+        </div>
+        <div>
+          <div class="preview-subsection-title">Bankverbindung</div>
+          <div>${bankLines.length ? bankLines.map(line => escapeHtml(line)).join('<br>') : 'Bitte in den Einstellungen hinterlegen.'}</div>
+        </div>
+        <div class="qr-block">
+          <div class="preview-subsection-title">Zahlungs-QR-Code</div>
+          ${qrImageUrl ? `<img class="qr-code" src="${escapeAttr(qrImageUrl)}" alt="QR-Code für Überweisung">` : `<div class="qr-code" style="display:flex;align-items:center;justify-content:center;font-size:0.8rem;color:var(--ink);">QR nicht verfügbar</div>`}
+          <div class="qr-caption">Zum Scannen in einer Banking-App.<br>Betrag und Verwendungszweck sind vorbelegt.</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function nl2br(text) { return String(text).replace(/\n/g, '<br>'); }
+function escapeHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+function escapeAttr(str) { return escapeHtml(str); }
+
+function formatEurAmountForSepa(amount) {
+  return Number(amount || 0).toFixed(2);
+}
+function compactIban(iban) {
+  return String(iban || '').replace(/\s+/g, '').toUpperCase();
+}
+function buildEpcQrPayload(inv, s) {
+  const name = String(s.name || '').trim().slice(0, 70);
+  const iban = compactIban(s.bankIban);
+  if (!name || !iban) return '';
+  const bic = String(s.bankBic || '').replace(/\s+/g, '').toUpperCase().slice(0, 11);
+  const amount = 'EUR' + formatEurAmountForSepa(inv.total);
+  const remittance = String(inv.nr || '').trim().slice(0, 35);
+  const purpose = '';
+  const text = ('Rechnung ' + String(inv.nr || '').trim()).slice(0, 140);
+  return [
+    'BCD',
+    '002',
+    '1',
+    'SCT',
+    bic,
+    name,
+    iban,
+    amount,
+    purpose,
+    remittance,
+    text
+  ].join('\n');
+}
+function buildQrImageUrl(payload) {
+  if (!payload) return '';
+  return 'https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=0&data=' + encodeURIComponent(payload);
+}
+
+function openSettings() {
+  document.getElementById('s-name').value = settings.name || '';
+  document.getElementById('s-beruf').value = settings.beruf || '';
+  document.getElementById('s-addr').value = settings.addr || '';
+  document.getElementById('s-contact').value = settings.contact || '';
+  document.getElementById('s-steuernr').value = settings.steuernr || '';
+  document.getElementById('s-rate').value = settings.defaultRate || '';
+  document.getElementById('s-payment-days').value = settings.paymentDays || 14;
+  document.getElementById('s-tax-note').value = settings.taxNote || defaultSettings.taxNote;
+  document.getElementById('s-bank-holder').value = settings.bankHolder || '';
+  document.getElementById('s-bank-name').value = settings.bankName || '';
+  document.getElementById('s-bank-iban').value = settings.bankIban || '';
+  document.getElementById('s-bank-bic').value = settings.bankBic || '';
+  renderRules();
+  renderClients();
+  document.getElementById('settings-modal').classList.add('open');
+}
+function closeSettings() { document.getElementById('settings-modal').classList.remove('open'); }
+
+function renderRules() {
+  const container = document.getElementById('rules-container');
+  const rules = settings.surchargeRules || [];
+  container.innerHTML = rules.map((rule, index) => `
+    <div class="rule-card">
+      <div class="rule-card-header">
+        <div class="rule-name">${escapeHtml(rule.name || 'Zuschlag')}</div>
+        <button class="btn btn-danger btn-sm" onclick="removeRule(${index})" ${rules.length <= 1 ? 'disabled' : ''}>Entfernen</button>
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="min-width:220px">
+          <label>Name</label>
+          <input type="text" value="${escapeAttr(rule.name || '')}" oninput="updateRule(${index}, 'name', this.value)">
+        </div>
+        <div class="form-group">
+          <label>Typ</label>
+          <select onchange="updateRule(${index}, 'type', this.value)">
+            <option value="night" ${rule.type === 'night' ? 'selected' : ''}>Zeitfenster / Nacht</option>
+            <option value="weekend" ${rule.type === 'weekend' ? 'selected' : ''}>Wochenende / Wochentage</option>
+            <option value="holiday" ${rule.type === 'holiday' ? 'selected' : ''}>Feiertag</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Zuschlag in %</label>
+          <input type="number" min="0" step="0.5" value="${escapeAttr(rule.percent ?? 0)}" oninput="updateRule(${index}, 'percent', this.value)">
+        </div>
+        <div class="form-group" style="min-width:140px">
+          <label>Aktiv</label>
+          <select onchange="updateRule(${index}, 'active', this.value === 'true')">
+            <option value="true" ${rule.active !== false ? 'selected' : ''}>Ja</option>
+            <option value="false" ${rule.active === false ? 'selected' : ''}>Nein</option>
+          </select>
+        </div>
+      </div>
+      ${rule.type === 'night' ? `
+        <div class="form-row" style="margin-top:12px">
+          <div class="form-group">
+            <label>Beginn</label>
+            <input type="time" value="${escapeAttr((rule.startTime || '20:00') === '24:00' ? '23:59' : (rule.startTime || '20:00'))}" oninput="updateRule(${index}, 'startTime', this.value)">
+          </div>
+          <div class="form-group">
+            <label>Ende</label>
+            <input type="time" value="${escapeAttr((rule.endTime || '06:00') === '24:00' ? '23:59' : (rule.endTime || '06:00'))}" oninput="updateRule(${index}, 'endTime', this.value === '23:59' ? '24:00' : this.value)">
+          </div>
+        </div>
+      ` : ''}
+      ${rule.type === 'weekend' ? `
+        <div class="form-row" style="margin-top:12px">
+          <div class="form-group">
+            <label>Von Wochentag</label>
+            <select onchange="updateRule(${index}, 'startWeekday', Number(this.value))">
+              ${[0,1,2,3,4,5,6].map(d => `<option value="${d}" ${Number(rule.startWeekday ?? 6) === d ? 'selected' : ''}>${weekdayLabel(d)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Bis Wochentag</label>
+            <select onchange="updateRule(${index}, 'endWeekday', Number(this.value))">
+              ${[0,1,2,3,4,5,6].map(d => `<option value="${d}" ${Number(rule.endWeekday ?? 0) === d ? 'selected' : ''}>${weekdayLabel(d)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Beginn Uhrzeit</label>
+            <input type="time" value="${escapeAttr((rule.startTime || '00:00') === '24:00' ? '23:59' : (rule.startTime || '00:00'))}" oninput="updateRule(${index}, 'startTime', this.value)">
+          </div>
+          <div class="form-group">
+            <label>Ende Uhrzeit</label>
+            <input type="time" value="${escapeAttr((rule.endTime || '24:00') === '24:00' ? '23:59' : (rule.endTime || '23:59'))}" oninput="updateRule(${index}, 'endTime', this.value === '23:59' ? '24:00' : this.value)">
+          </div>
+        </div>
+      ` : ''}
+      ${rule.type === 'holiday' ? `<div class="hint" style="margin-top:12px">Dieser Zuschlag greift, wenn im Einsatz das Feiertags-Häkchen gesetzt ist.</div>` : ''}
+    </div>
+  `).join('');
+}
+
+function renderClients() {
+  const container = document.getElementById('clients-container');
+  const clients = settings.clients || [];
+  if (!container) return;
+  if (!clients.length) {
+    container.innerHTML = '<div class="hint">Noch keine Kund:innen gespeichert.</div>';
+    return;
+  }
+  container.innerHTML = clients.map((client, index) => `
+    <div class="rule-card">
+      <div class="rule-card-header">
+        <div class="rule-name">${escapeHtml(client.name || 'Kunde')}</div>
+        <button class="btn btn-danger btn-sm" onclick="removeClientProfile(${index})">Entfernen</button>
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="min-width:220px">
+          <label>Name</label>
+          <input type="text" value="${escapeAttr(client.name || '')}" oninput="updateClientProfile(${index}, 'name', this.value)">
+        </div>
+        <div class="form-group" style="min-width:220px">
+          <label>Straße und Hausnummer</label>
+          <input type="text" value="${escapeAttr(client.street || '')}" oninput="updateClientProfile(${index}, 'street', this.value)">
+        </div>
+      </div>
+      <div class="form-row" style="margin-top:12px">
+        <div class="form-group">
+          <label>PLZ</label>
+          <input type="text" value="${escapeAttr(client.plz || '')}" oninput="updateClientProfile(${index}, 'plz', this.value)">
+        </div>
+        <div class="form-group">
+          <label>Ort</label>
+          <input type="text" value="${escapeAttr(client.city || '')}" oninput="updateClientProfile(${index}, 'city', this.value)">
+        </div>
+        <div class="form-group">
+          <label>Stundensatz (€)</label>
+          <input type="number" min="0" step="0.5" value="${escapeAttr(client.defaultRate ?? '')}" oninput="updateClientProfile(${index}, 'defaultRate', this.value)">
+        </div>
+        <div class="form-group">
+          <label>Zahlungsziel (Tage)</label>
+          <input type="number" min="1" step="1" value="${escapeAttr(client.paymentDays ?? '')}" oninput="updateClientProfile(${index}, 'paymentDays', this.value)">
+        </div>
+      </div>
+      <div class="form-row" style="margin-top:12px">
+        <div class="form-group" style="flex:1">
+          <label>Standard-Einleitung</label>
+          <textarea rows="2" oninput="updateClientProfile(${index}, 'intro', this.value)">${escapeHtml(client.intro || '')}</textarea>
+        </div>
+      </div>
+      <div class="form-row" style="margin-top:12px">
+        <div class="form-group" style="flex:1">
+          <label>Standard-Hinweise</label>
+          <textarea rows="3" oninput="updateClientProfile(${index}, 'note', this.value)">${escapeHtml(client.note || '')}</textarea>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function addClientProfile() {
+  settings.clients = [...(settings.clients || []), {
+    id: uid(),
+    name: 'Neuer Kunde',
+    street: '',
+    plz: '',
+    city: '',
+    defaultRate: Number(settings.defaultRate || 0),
+    paymentDays: Number(settings.paymentDays || 14),
+    intro: 'Abrechnung der erbrachten Pflegeleistungen.',
+    note: 'Bitte überweisen Sie den Betrag ohne Abzug auf das unten genannte Konto.'
+  }];
+  renderClients();
+}
+
+function updateClientProfile(index, field, value) {
+  settings.clients[index][field] = ['defaultRate','paymentDays'].includes(field) ? Number(value || 0) : value;
+}
+
+function removeClientProfile(index) {
+  settings.clients.splice(index, 1);
+  renderClients();
+}
+
+function addRule() {
+  settings.surchargeRules.push({
+    id: uid(),
+    name: 'Neuer Zuschlag',
+    type: 'night',
+    percent: 25,
+    startTime: '20:00',
+    endTime: '06:00',
+    active: true
+  });
+  renderRules();
+}
+function updateRule(index, field, value) {
+  settings.surchargeRules[index][field] = value;
+}
+function removeRule(index) {
+  if ((settings.surchargeRules || []).length <= 1) return;
+  settings.surchargeRules.splice(index, 1);
+  renderRules();
+}
+
+function saveSettings() {
+  settings = {
+    ...settings,
+    name: document.getElementById('s-name').value,
+    beruf: document.getElementById('s-beruf').value,
+    addr: document.getElementById('s-addr').value,
+    contact: document.getElementById('s-contact').value,
+    steuernr: document.getElementById('s-steuernr').value,
+    defaultRate: Number(document.getElementById('s-rate').value || 0),
+    paymentDays: Number(document.getElementById('s-payment-days').value || 14),
+    taxNote: document.getElementById('s-tax-note').value || defaultSettings.taxNote,
+    bankHolder: document.getElementById('s-bank-holder').value,
+    bankName: document.getElementById('s-bank-name').value,
+    bankIban: document.getElementById('s-bank-iban').value,
+    bankBic: document.getElementById('s-bank-bic').value,
+    clients: normalizeClients(settings.clients),
+    surchargeRules: normalizeRules(settings.surchargeRules)
+  };
+  localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
+  shifts = shifts.map(s => ({ ...s, rate: Number(s.rate || settings.defaultRate || 0) }));
+  renderClientSelect(document.getElementById('f-client-select') ? document.getElementById('f-client-select').value : '');
+  closeSettings();
+  renderShifts();
+}
+
+document.getElementById('settings-modal').addEventListener('click', e => {
+  if (e.target === document.getElementById('settings-modal')) closeSettings();
+});
+
+renderList();
+if (!settings.name) setTimeout(openSettings, 300);
+</script>
+</body>
+</html>
