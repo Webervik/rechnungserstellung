@@ -1232,11 +1232,22 @@ function doPrint() {
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600&family=DM+Sans:wght@300;400;500;700&display=swap" rel="stylesheet">
 <style>
 ${style}
-body { background:#fff; margin:0; padding:0; }
-.preview-paper { border:none; box-shadow:none; border-radius:0; margin:0 auto; padding:10mm 8mm; max-width:100%; }
-#ios-bar { font-family:sans-serif; font-size:14px; padding:12px 16px; background:#4E7A6A; color:#fff; display:flex; align-items:center; justify-content:space-between; gap:12px; position:sticky; top:0; z-index:99; }
-#ios-bar button { background:#fff; color:#4E7A6A; border:none; border-radius:8px; padding:9px 18px; font-size:14px; font-weight:700; cursor:pointer; }
-@media print { #ios-bar { display:none !important; } .preview-paper { padding:12mm 10mm; } }
+body { background:#fff; margin:0; padding:0; overflow-x:hidden; }
+.preview-paper { border:none; box-shadow:none; border-radius:0; margin:0 auto; padding:6mm 5mm; max-width:100%; overflow-x:hidden; }
+.preview-table { min-width:0 !important; width:100%; font-size:0.8rem; }
+.preview-table th, .preview-table td { padding:7px 6px !important; font-size:0.8rem; }
+.preview-table-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+.invoice-header-row { display:block !important; }
+.invoice-number-block { text-align:left !important; margin-top:14px !important; }
+.preview-footer { display:block !important; }
+.invoice-from h2 { font-size:1.2rem; }
+.preview-total-row .t-lbl { min-width:120px !important; }
+.preview-total-row .t-val { min-width:80px !important; }
+.qr-code { width:130px !important; height:130px !important; }
+#ios-bar { font-family:sans-serif; font-size:13px; padding:10px 12px; background:#4E7A6A; color:#fff; display:flex; align-items:center; justify-content:space-between; gap:8px; position:sticky; top:0; z-index:99; flex-wrap:nowrap; }
+#ios-bar button { background:#fff; color:#4E7A6A; border:none; border-radius:8px; padding:8px 12px; font-size:13px; font-weight:700; cursor:pointer; white-space:nowrap; }
+#ios-bar span { font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+@media print { #ios-bar { display:none !important; } .preview-paper { padding:12mm 10mm; } .preview-table { min-width:0 !important; font-size:0.85rem; } }
 </style>
 </head><body>
 <div id="ios-bar">
