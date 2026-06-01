@@ -296,22 +296,7 @@
     </div>
 
     <div class="form-section">
-      <div class="section-title" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
-        <span>Empfänger / Patient</span>
-        <div class="hint">Kundendaten und Konditionen können gespeichert und wiederverwendet werden.</div>
-      </div>
-      <div class="form-row" style="margin-bottom:14px">
-        <div class="form-group" style="flex:2">
-          <label>Gespeicherter Kunde</label>
-          <select id="f-client-select" onchange="applySelectedClient(this.value)">
-            <option value="">— Bitte wählen —</option>
-          </select>
-        </div>
-        <div class="form-group" style="flex:1;min-width:220px;justify-content:flex-end">
-          <label>&nbsp;</label>
-          <button class="btn btn-ghost" type="button" onclick="saveCurrentAsClient()">Aktuelle Daten als Kunde speichern</button>
-        </div>
-      </div>
+      <div class="section-title">Empfänger / Patient</div>
       <div class="form-row" style="margin-bottom:14px">
         <div class="form-group" style="flex:2">
           <label>Name</label>
@@ -426,8 +411,9 @@
       </div>
       <div class="form-row" style="margin-top:14px">
         <div class="form-group">
-          <label>Steuernummer</label>
-          <input type="text" id="s-steuernr" placeholder="optional">
+          <label>Steuernummer <span style="color:var(--danger-fg);font-weight:700">*</span></label>
+          <input type="text" id="s-steuernr" placeholder="z.B. 12345/67890">
+          <div class="hint" style="color:var(--danger-fg)">Pflichtangabe auf Rechnungen</div>
         </div>
         <div class="form-group">
           <label>Standard-Stundensatz (€)</label>
@@ -435,7 +421,7 @@
         </div>
         <div class="form-group">
           <label>Zahlungsziel (Tage)</label>
-          <input type="number" id="s-payment-days" min="1" step="1" placeholder="14">
+          <input type="number" id="s-payment-days" min="1" step="1" placeholder="30">
         </div>
       </div>
       <div class="form-row" style="margin-top:14px">
@@ -479,18 +465,16 @@
       <div id="rules-container"></div>
     </div>
 
-    <div class="form-section" style="margin-bottom:16px">
-      <div class="section-title" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
-        <span>Gespeicherte Kund:innen</span>
-        <button class="btn btn-ghost btn-sm" onclick="addClientProfile()">+ Kunde hinzufügen</button>
+    <div style="border-top:1px solid var(--border);padding-top:16px;margin-top:4px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+        <span style="font-size:0.8rem;color:var(--ink-faint);font-weight:600;text-transform:uppercase;letter-spacing:0.06em">Datensicherung</span>
+        <button class="btn btn-ghost btn-sm" onclick="exportSettings()">⬇ Einstellungen exportieren</button>
+        <label class="btn btn-ghost btn-sm" style="cursor:pointer">⬆ Einstellungen importieren<input type="file" accept=".json" style="display:none" onchange="importSettings(this)"></label>
       </div>
-      <div class="hint" style="margin-bottom:12px">Hier kannst du Name, Adresse und wiederkehrende Konditionen pro Kunde hinterlegen. Beim Auswählen im Formular werden sie automatisch übernommen.</div>
-      <div id="clients-container"></div>
-    </div>
-
-    <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap">
-      <button class="btn btn-ghost" onclick="closeSettings()">Abbrechen</button>
-      <button class="btn btn-primary" onclick="saveSettings()">Speichern</button>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-ghost" onclick="closeSettings()">Abbrechen</button>
+        <button class="btn btn-primary" onclick="saveSettings()">Speichern</button>
+      </div>
     </div>
   </div>
 </div>
@@ -506,7 +490,7 @@ const defaultSettings = {
   contact: '',
   steuernr: '',
   defaultRate: 38,
-  paymentDays: 14,
+  paymentDays: 30,
   taxNote: 'Gemäß § 4 Nr. 14 UStG wird keine Umsatzsteuer berechnet.',
   bankHolder: '',
   bankName: '',
@@ -590,6 +574,31 @@ function addDays(isoDate, days) {
   const dt = new Date(isoDate + 'T00:00:00');
   dt.setDate(dt.getDate() + Number(days || 0));
   return dt.toISOString().slice(0, 10);
+}
+
+// Fälligkeit: 30 Tage nach Monatsende des Leistungsmonats,
+// außer die Rechnung wird nach dem 7. des Folgemonats eingereicht → dann Rechnungsdatum + 30 Tage.
+function calcDueDate(invoiceDateStr, shiftsArr) {
+  const invoiceDate = new Date((invoiceDateStr || today()) + 'T00:00:00');
+  // Leistungsmonat = Monat des spätesten Einsatzendes (oder Rechnungsmonat als Fallback)
+  const shiftDates = (shiftsArr || []).map(s => s.endDate || s.startDate).filter(Boolean).sort();
+  let svcYear, svcMonth;
+  if (shiftDates.length) {
+    const d = new Date(shiftDates[shiftDates.length - 1] + 'T00:00:00');
+    svcYear = d.getFullYear(); svcMonth = d.getMonth();
+  } else {
+    svcYear = invoiceDate.getFullYear(); svcMonth = invoiceDate.getMonth();
+  }
+  // 7. des Folgemonats nach dem Leistungsmonat
+  const cutoff = new Date(svcYear, svcMonth + 1, 7);
+  if (invoiceDate > cutoff) {
+    // Zu spät eingereicht → Rechnungsdatum + 30 Tage
+    return addDays(invoiceDateStr || today(), 30);
+  } else {
+    // Monatsende des Leistungsmonats + 30 Tage
+    const endOfMonth = new Date(svcYear, svcMonth + 1, 0);
+    return addDays(endOfMonth.toISOString().slice(0, 10), 30);
+  }
 }
 function fmtDate(s) {
   if (!s) return '';
@@ -718,7 +727,7 @@ function newInvoice() {
   shifts = [createShift()];
   document.getElementById('f-nr').value = nextNr();
   document.getElementById('f-date').value = today();
-  document.getElementById('f-due').value = addDays(today(), settings.paymentDays || 14);
+  document.getElementById('f-due').value = calcDueDate(today(), shifts);
   document.getElementById('f-status').value = 'open';
   document.getElementById('f-cname').value = '';
   document.getElementById('f-cstreet').value = '';
@@ -1447,12 +1456,47 @@ function saveSettings() {
   renderShifts();
 }
 
+function exportSettings() {
+  const data = JSON.stringify(settings, null, 2);
+  const blob = new Blob([data], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const name = (settings.name || 'einstellungen').replace(/\s+/g, '_').toLowerCase();
+  a.href = url;
+  a.download = `pflegrechnung_${name}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function importSettings(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const raw = JSON.parse(e.target.result);
+      settings = {
+        ...structuredClone(defaultSettings),
+        ...raw,
+        clients: normalizeClients(raw.clients),
+        surchargeRules: normalizeRules(raw.surchargeRules)
+      };
+      localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
+      openSettings();
+      alert('Einstellungen erfolgreich importiert.');
+    } catch {
+      alert('Fehler: Die Datei konnte nicht gelesen werden. Bitte nur eine gültige Exportdatei verwenden.');
+    }
+    input.value = '';
+  };
+  reader.readAsText(file);
+}
+
 document.getElementById('settings-modal').addEventListener('click', e => {
   if (e.target === document.getElementById('settings-modal')) closeSettings();
 });
 
 renderList();
-if (!settings.name) setTimeout(openSettings, 300);
 </script>
 </body>
 </html>
