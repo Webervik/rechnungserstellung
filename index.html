@@ -249,6 +249,39 @@
   .pin-error { color:var(--danger-fg);font-size:0.88rem;min-height:20px; }
   .pin-hint { font-size:0.8rem;color:var(--ink-faint);text-align:center; }
 
+  /* Monatsrad */
+  .wheel-wrapper {
+    position:relative; display:flex; height:240px; overflow:hidden;
+    border-radius:14px; background:var(--sand); user-select:none;
+  }
+  .wheel-scroll {
+    flex:1; height:100%; overflow-y:scroll;
+    scroll-snap-type:y mandatory; -webkit-overflow-scrolling:touch;
+    scrollbar-width:none;
+  }
+  .wheel-scroll::-webkit-scrollbar { display:none; }
+  .wheel-item {
+    height:48px; display:flex; align-items:center; justify-content:center;
+    font-size:1.05rem; scroll-snap-align:center; color:var(--ink-soft);
+    transition:color 0.15s, font-size 0.15s;
+  }
+  .wheel-item.selected { color:var(--ink); font-size:1.2rem; font-weight:700; }
+  .wheel-bar {
+    position:absolute; top:50%; left:10px; right:10px; height:48px;
+    transform:translateY(-50%); border-top:2px solid var(--sage);
+    border-bottom:2px solid var(--sage); border-radius:4px; pointer-events:none; z-index:2;
+  }
+  .wheel-fade-top {
+    position:absolute; top:0; left:0; right:0; height:100px;
+    background:linear-gradient(to bottom, var(--sand) 10%, transparent);
+    pointer-events:none; z-index:1;
+  }
+  .wheel-fade-bottom {
+    position:absolute; bottom:0; left:0; right:0; height:100px;
+    background:linear-gradient(to top, var(--sand) 10%, transparent);
+    pointer-events:none; z-index:1;
+  }
+
   @media print {
     body { background:#fff; }
     .app-header, .preview-toolbar, .form-actions, #open-settings-fab { display:none !important; }
@@ -758,22 +791,27 @@ function saveCurrentAsClient() {
 }
 
 function newInvoice() {
-  currentId = null;
-  shifts = [createShift()];
-  document.getElementById('f-nr').value = nextNr();
-  document.getElementById('f-date').value = today();
-  document.getElementById('f-due').value = calcDueDate(today(), shifts);
-  document.getElementById('f-cname').value = 'Sarah Salin';
-  document.getElementById('f-cstreet').value = 'Meraner Str. 18a';
-  document.getElementById('f-cplz').value = '10825';
-  document.getElementById('f-ccity').value = 'Berlin';
-  renderClientSelect('');
-  document.getElementById('f-intro').value = 'Abrechnung der erbrachten Pflegeleistungen.';
-  document.getElementById('f-note').value = 'Bitte überweisen Sie den Betrag ohne Abzug auf das unten genannte Konto.';
-  document.getElementById('form-title').textContent = 'Neue Rechnung';
-  document.getElementById('btn-delete').style.display = 'none';
-  renderShifts();
-  showView('form');
+  showMonthPicker((year, month) => {
+    // Rechnungsdatum = letzter Tag des gewählten Monats
+    const lastDay = new Date(year, month + 1, 0);
+    const invoiceDate = `${year}-${String(month+1).padStart(2,'0')}-${String(lastDay.getDate()).padStart(2,'0')}`;
+    currentId = null;
+    shifts = [createShift()];
+    document.getElementById('f-nr').value = nextNr();
+    document.getElementById('f-date').value = invoiceDate;
+    document.getElementById('f-due').value = calcDueDate(invoiceDate, shifts);
+    document.getElementById('f-cname').value = 'Sarah Salin';
+    document.getElementById('f-cstreet').value = 'Meraner Str. 18a';
+    document.getElementById('f-cplz').value = '10825';
+    document.getElementById('f-ccity').value = 'Berlin';
+    renderClientSelect('');
+    document.getElementById('f-intro').value = 'Abrechnung der erbrachten Pflegeleistungen.';
+    document.getElementById('f-note').value = 'Bitte überweisen Sie den Betrag ohne Abzug auf das unten genannte Konto.';
+    document.getElementById('form-title').textContent = 'Neue Rechnung';
+    document.getElementById('btn-delete').style.display = 'none';
+    renderShifts();
+    showView('form');
+  });
 }
 
 function editInvoice(id) {
@@ -1567,6 +1605,78 @@ function _initPinScreen() {
 _initPinScreen();
 
 renderList();
+
+// ── Monatsrad ────────────────────────────────────────────────────────────────
+const MONTHS_DE = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+const WHEEL_H = 48;
+const WHEEL_PAD = 2;
+let _monthPickerCb = null;
+let _wheelYears = [];
+
+function showMonthPicker(onConfirm) {
+  const existing = document.getElementById('month-picker-overlay');
+  if (existing) existing.remove();
+  _monthPickerCb = onConfirm;
+
+  const now = new Date();
+  const cy = now.getFullYear();
+  _wheelYears = [cy - 1, cy, cy + 1];
+
+  const overlay = document.createElement('div');
+  overlay.id = 'month-picker-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(44,40,32,0.45);backdrop-filter:blur(4px);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px';
+  overlay.innerHTML = `
+    <div style="background:var(--warm-white);border-radius:24px;padding:28px;width:100%;max-width:340px;box-shadow:0 20px 60px rgba(0,0,0,0.2)">
+      <h2 style="font-family:'Playfair Display',serif;font-size:1.3rem;margin-bottom:20px;text-align:center">Für welchen Monat?</h2>
+      <div class="wheel-wrapper">
+        <div class="wheel-bar"></div>
+        <div class="wheel-fade-top"></div>
+        <div class="wheel-fade-bottom"></div>
+        <div class="wheel-scroll" id="wp-month"></div>
+        <div class="wheel-scroll" id="wp-year"></div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:20px">
+        <button class="btn btn-ghost" style="flex:1" onclick="document.getElementById('month-picker-overlay').remove()">Abbrechen</button>
+        <button class="btn btn-primary" style="flex:2" onclick="_confirmMonthPick()">Weiter →</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  _initWheel('wp-month', MONTHS_DE, now.getMonth());
+  _initWheel('wp-year', _wheelYears.map(String), 1);
+}
+
+function _initWheel(id, items, defaultIdx) {
+  const el = document.getElementById(id);
+  const pad = '<div class="wheel-item" aria-hidden="true"></div>'.repeat(WHEEL_PAD);
+  el.innerHTML = pad + items.map(v => `<div class="wheel-item">${v}</div>`).join('') + pad;
+  requestAnimationFrame(() => {
+    el.scrollTop = defaultIdx * WHEEL_H;
+    _highlightWheel(el);
+    el.addEventListener('scroll', () => { _highlightWheel(el); }, { passive: true });
+  });
+}
+
+function _highlightWheel(el) {
+  const idx = Math.round(el.scrollTop / WHEEL_H);
+  el.querySelectorAll('.wheel-item').forEach((item, i) => {
+    item.classList.toggle('selected', i === idx + WHEEL_PAD);
+  });
+}
+
+function _getWheelIdx(id) {
+  const el = document.getElementById(id);
+  return Math.round(el.scrollTop / WHEEL_H);
+}
+
+function _confirmMonthPick() {
+  const monthIdx = _getWheelIdx('wp-month');
+  const yearIdx  = _getWheelIdx('wp-year');
+  const year  = _wheelYears[Math.max(0, Math.min(yearIdx, _wheelYears.length - 1))];
+  const month = Math.max(0, Math.min(monthIdx, 11));
+  document.getElementById('month-picker-overlay').remove();
+  if (_monthPickerCb) _monthPickerCb(year, month);
+}
 
 // ── Dienstplan-Import aus Pflegedisposition ──────────────────────────────────
 const DISPO_URL = 'https://raw.githubusercontent.com/webervik/personaldispo/main/daten.json';
