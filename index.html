@@ -1572,6 +1572,11 @@ renderList();
 const DISPO_URL = 'https://raw.githubusercontent.com/webervik/personaldispo/main/daten.json';
 
 function showDispoModal() {
+  const nurseName = (settings.name || '').trim();
+  if (!nurseName) {
+    alert('Bitte zuerst deinen Namen in den Einstellungen eintragen.');
+    return;
+  }
   const existing = document.getElementById('dispo-overlay');
   if (existing) existing.remove();
   const now = new Date();
@@ -1581,7 +1586,10 @@ function showDispoModal() {
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(44,40,32,0.45);backdrop-filter:blur(4px);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px';
   overlay.innerHTML = `
     <div style="background:var(--warm-white);border-radius:20px;padding:28px;width:100%;max-width:500px;box-shadow:0 20px 60px rgba(0,0,0,0.2);max-height:90vh;overflow-y:auto">
-      <h2 style="font-family:'Playfair Display',serif;font-size:1.3rem;margin-bottom:16px">📅 Dienste aus Dienstplan laden</h2>
+      <h2 style="font-family:'Playfair Display',serif;font-size:1.3rem;margin-bottom:6px">📅 Dienste aus Dienstplan laden</h2>
+      <div style="font-size:0.85rem;color:var(--ink-soft);margin-bottom:16px;padding:10px 12px;background:var(--sand);border-radius:8px">
+        Dienste werden geladen für: <strong>${escapeHtml(nurseName)}</strong>
+      </div>
       <div style="display:flex;gap:10px;align-items:flex-end;margin-bottom:16px;flex-wrap:wrap">
         <div class="form-group" style="flex:1;min-width:160px">
           <label>Monat</label>
