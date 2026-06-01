@@ -806,7 +806,9 @@ function newInvoice() {
     const invoiceDate = `${year}-${String(month+1).padStart(2,'0')}-${String(lastDay.getDate()).padStart(2,'0')}`;
     currentId = null;
     shifts = [createShift()];
-    document.getElementById('f-nr').value = nextNr();
+    const monthName = MONTHS_DE[month];
+    const nurseShort = (settings.name || '').trim();
+    document.getElementById('f-nr').value = nurseShort ? `${nurseShort} ${monthName} ${year}` : nextNr();
     document.getElementById('f-date').value = invoiceDate;
     document.getElementById('f-due').value = calcDueDate(invoiceDate, shifts);
     document.getElementById('f-cname').value = 'Sarah Salin';
@@ -1212,9 +1214,8 @@ function saveAndPreview() {
 function openMailForInvoice() {
   const inv = _currentPreviewInv;
   if (!inv) return;
-  const d = new Date((inv.date || today()) + 'T00:00:00');
-  const monat = MONTHS_DE ? MONTHS_DE[d.getMonth()] : (d.getMonth()+1);
-  const subject = `Rechnung Sarah Salin ${monat} ${d.getFullYear()}`;
+  // Betreff aus Rechnungsnummer (enthält bereits Name + Monat) oder Fallback
+  const subject = inv.nr || `Rechnung ${settings.name || ''} ${today().slice(0,7)}`;
   window.location.href = `mailto:?subject=${encodeURIComponent(subject)}`;
 }
 
