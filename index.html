@@ -1124,12 +1124,6 @@ body { background:#fff; margin:0; padding:0; }
   <button onclick="window.print()">Drucken / PDF</button>
 </div>
 ${area}
-<script>
-  // Auf iOS 16.4+ klappt window.print() direkt
-  window.onload = function() {
-    try { window.print(); } catch(e) {}
-  };
-<\/script>
 </body></html>`);
   win.document.close();
 }
