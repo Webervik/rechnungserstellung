@@ -814,6 +814,15 @@ function removeShift(index) {
   renderShifts();
 }
 
+function autoFillEndDate(index, newStartDate) {
+  // Enddatum auf Beginndatum setzen, wenn es noch leer oder gleich dem alten Beginndatum war
+  if (!shifts[index].endDate || shifts[index].endDate === shifts[index].startDate) {
+    shifts[index].endDate = newStartDate;
+  }
+  shifts[index].startDate = newStartDate;
+  renderShifts();
+}
+
 function updateShiftField(index, field, value, shouldRender = true) {
   shifts[index][field] = value;
   if (shouldRender) renderShifts();
@@ -981,7 +990,7 @@ function renderShifts() {
         <div class="form-row" style="margin-top:14px">
           <div class="form-group">
             <label>Beginn Datum</label>
-            <input type="date" value="${escapeAttr(shift.startDate || '')}" onchange="updateShiftField(${index}, 'startDate', this.value, true)">
+            <input type="date" value="${escapeAttr(shift.startDate || '')}" onchange="autoFillEndDate(${index}, this.value)">
           </div>
           <div class="form-group">
             <label>Beginn Uhrzeit</label>
