@@ -226,6 +226,29 @@
     .qr-code { width: 140px; height: 140px; }
   }
 
+  /* PIN-Sperre */
+  #pin-screen {
+    position:fixed;inset:0;background:var(--sand);z-index:999;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;
+    padding:32px;
+  }
+  .pin-logo { font-family:'Playfair Display',serif;font-size:1.5rem;color:var(--sage-dark);margin-bottom:4px; }
+  .pin-logo span { color:var(--terracotta); }
+  .pin-dots { display:flex;gap:14px;margin:8px 0; }
+  .pin-dot { width:16px;height:16px;border-radius:50%;border:2px solid var(--sage);background:transparent;transition:background 0.15s; }
+  .pin-dot.filled { background:var(--sage-dark);border-color:var(--sage-dark); }
+  .pin-pad { display:grid;grid-template-columns:repeat(3,72px);gap:12px; }
+  .pin-key {
+    width:72px;height:72px;border-radius:50%;border:1.5px solid var(--border);
+    background:var(--warm-white);font-size:1.4rem;font-weight:600;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;transition:all 0.15s;
+    font-family:'DM Sans',sans-serif;color:var(--ink);
+  }
+  .pin-key:active, .pin-key:hover { background:var(--sage-light);border-color:var(--sage); }
+  .pin-key.del { font-size:1rem;color:var(--ink-soft); }
+  .pin-error { color:var(--danger-fg);font-size:0.88rem;min-height:20px; }
+  .pin-hint { font-size:0.8rem;color:var(--ink-faint);text-align:center; }
+
   @media print {
     body { background:#fff; }
     .app-header, .preview-toolbar, .form-actions, #open-settings-fab { display:none !important; }
@@ -234,6 +257,33 @@
 </style>
 </head>
 <body>
+
+<div id="pin-screen" style="display:none">
+  <div class="pin-logo">Pflege<span>Rechnung Pro</span></div>
+  <div style="font-size:0.9rem;color:var(--ink-soft)" id="pin-label">PIN eingeben</div>
+  <div class="pin-dots">
+    <div class="pin-dot" id="pd0"></div>
+    <div class="pin-dot" id="pd1"></div>
+    <div class="pin-dot" id="pd2"></div>
+    <div class="pin-dot" id="pd3"></div>
+  </div>
+  <div class="pin-error" id="pin-error"></div>
+  <div class="pin-pad">
+    <button class="pin-key" onclick="pinKey('1')">1</button>
+    <button class="pin-key" onclick="pinKey('2')">2</button>
+    <button class="pin-key" onclick="pinKey('3')">3</button>
+    <button class="pin-key" onclick="pinKey('4')">4</button>
+    <button class="pin-key" onclick="pinKey('5')">5</button>
+    <button class="pin-key" onclick="pinKey('6')">6</button>
+    <button class="pin-key" onclick="pinKey('7')">7</button>
+    <button class="pin-key" onclick="pinKey('8')">8</button>
+    <button class="pin-key" onclick="pinKey('9')">9</button>
+    <button class="pin-key" style="visibility:hidden"></button>
+    <button class="pin-key" onclick="pinKey('0')">0</button>
+    <button class="pin-key del" onclick="pinDel()">⌫</button>
+  </div>
+  <div class="pin-hint" id="pin-hint"></div>
+</div>
 
 <div id="view-list" class="view active">
   <header class="app-header">
@@ -425,6 +475,11 @@
           <label>Zahlungsziel (Tage)</label>
           <input type="number" id="s-payment-days" min="1" step="1" placeholder="30">
         </div>
+        <div class="form-group">
+          <label>PIN (4 Stellen)</label>
+          <input type="password" id="s-pin" maxlength="4" pattern="[0-9]{4}" inputmode="numeric" placeholder="optional – schützt vor Fremdzugriff">
+          <div class="hint">Einmal pro Browsersitzung eingeben</div>
+        </div>
       </div>
       <div class="form-row" style="margin-top:14px">
         <div class="form-group" style="flex:2">
@@ -496,7 +551,8 @@ const defaultSettings = {
   bankName: '',
   bankIban: '',
   bankBic: '',
-  clients: []
+  clients: [],
+  pin: ''
 };
 
 let invoices = loadInvoices();
@@ -844,13 +900,15 @@ function easterSunday(year) {
 }
 function getBerlinHolidays(year) {
   const e = easterSunday(year);
-  const add = (d, n) => { const r = new Date(d); r.setDate(r.getDate()+n); return r.toISOString().slice(0,10); };
+  // Lokale Datumskomponenten statt toISOString() – vermeidet Zeitzonenfehler (UTC+1/+2)
+  const fmt = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  const add = (d, n) => { const r = new Date(d.getFullYear(), d.getMonth(), d.getDate()+n); return fmt(r); };
   return new Set([
     `${year}-01-01`,   // Neujahr
     `${year}-03-08`,   // Internationaler Frauentag (Berlin)
     add(e, -2),        // Karfreitag
-    add(e, 0),         // Ostersonntag
-    add(e, 1),         // Ostermontag
+    fmt(e),            // Ostersonntag
+    add(e,  1),        // Ostermontag
     `${year}-05-01`,   // Tag der Arbeit
     add(e, 39),        // Christi Himmelfahrt
     add(e, 49),        // Pfingstsonntag
@@ -1303,6 +1361,7 @@ function openSettings() {
   document.getElementById('s-bank-name').value = settings.bankName || '';
   document.getElementById('s-bank-iban').value = settings.bankIban || '';
   document.getElementById('s-bank-bic').value = settings.bankBic || '';
+  document.getElementById('s-pin').value = settings.pin || '';
   renderClients();
   document.getElementById('settings-modal').classList.add('open');
 }
@@ -1405,7 +1464,8 @@ function saveSettings() {
     bankName: document.getElementById('s-bank-name').value,
     bankIban: document.getElementById('s-bank-iban').value,
     bankBic: document.getElementById('s-bank-bic').value,
-    clients: normalizeClients(settings.clients)
+    clients: normalizeClients(settings.clients),
+    pin: (document.getElementById('s-pin').value || '').replace(/\D/g,'').slice(0,4)
   };
   localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
   shifts = shifts.map(s => ({ ...s, rate: Number(s.rate || settings.defaultRate || 0) }));
@@ -1467,6 +1527,44 @@ function restoreFromText() {
 document.getElementById('settings-modal').addEventListener('click', e => {
   if (e.target === document.getElementById('settings-modal')) closeSettings();
 });
+
+// ── PIN-Sperre ───────────────────────────────────────────────────────────────
+let _pinBuffer = '';
+
+function pinKey(digit) {
+  if (_pinBuffer.length >= 4) return;
+  _pinBuffer += digit;
+  _updatePinDots();
+  if (_pinBuffer.length === 4) setTimeout(_checkPin, 120);
+}
+function pinDel() {
+  _pinBuffer = _pinBuffer.slice(0, -1);
+  _updatePinDots();
+  document.getElementById('pin-error').textContent = '';
+}
+function _updatePinDots() {
+  for (let i = 0; i < 4; i++) {
+    document.getElementById('pd'+i).classList.toggle('filled', i < _pinBuffer.length);
+  }
+}
+function _checkPin() {
+  if (_pinBuffer === settings.pin) {
+    sessionStorage.setItem('pflegepro_unlocked', '1');
+    document.getElementById('pin-screen').style.display = 'none';
+  } else {
+    document.getElementById('pin-error').textContent = 'Falscher PIN – bitte erneut versuchen.';
+    _pinBuffer = '';
+    _updatePinDots();
+  }
+}
+function _initPinScreen() {
+  const pin = settings.pin || '';
+  if (!pin || sessionStorage.getItem('pflegepro_unlocked') === '1') return;
+  document.getElementById('pin-screen').style.display = 'flex';
+  document.getElementById('pin-label').textContent = settings.name ? `Hallo, ${settings.name.split(' ')[0]} 👋` : 'PIN eingeben';
+  document.getElementById('pin-hint').textContent = 'PIN vergessen? Einstellungen → PIN löschen.';
+}
+_initPinScreen();
 
 renderList();
 
