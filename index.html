@@ -637,11 +637,15 @@ function saveAllInvoices() {
 function eur(n) {
   return (Number(n) || 0).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
 }
-function today() { return new Date().toISOString().slice(0, 10); }
+// Lokales Datum als ISO-String – vermeidet UTC-Verschiebung (z.B. UTC+2 im Sommer)
+function localISO(d) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function today() { return localISO(new Date()); }
 function addDays(isoDate, days) {
   const dt = new Date(isoDate + 'T00:00:00');
   dt.setDate(dt.getDate() + Number(days || 0));
-  return dt.toISOString().slice(0, 10);
+  return localISO(dt);
 }
 
 // Fälligkeit: 30 Tage nach Monatsende des Leistungsmonats,
@@ -665,7 +669,7 @@ function calcDueDate(invoiceDateStr, shiftsArr) {
   } else {
     // Monatsende des Leistungsmonats + 30 Tage
     const endOfMonth = new Date(svcYear, svcMonth + 1, 0);
-    return addDays(endOfMonth.toISOString().slice(0, 10), 30);
+    return addDays(localISO(endOfMonth), 30);
   }
 }
 function fmtDate(s) {
@@ -999,7 +1003,7 @@ function calculateShift(shift) {
 
     const minuteOfDay = cursor.getHours() * 60 + cursor.getMinutes();
     const weekday = cursor.getDay();
-    const dateStr = cursor.toISOString().slice(0,10);
+    const dateStr = localISO(cursor);
     if (dateStr !== curDateStr) { curDateStr = dateStr; curIsHoliday = isHoliday(dateStr); }
 
     SURCHARGE_RULES.forEach(rule => {
@@ -1761,7 +1765,7 @@ async function loadDispoShifts(yearMonth) {
         if (eH < sH || (eH <= 8 && sH >= 20)) {
           const d = new Date(date + 'T00:00:00');
           d.setDate(d.getDate() + 1);
-          endDate = d.toISOString().slice(0, 10);
+          endDate = localISO(d);
         }
         found.push({ date, startTime, endTime, endDate });
       }
