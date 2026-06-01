@@ -1098,18 +1098,18 @@ function renderShifts() {
         </div>
 
         <div class="form-row" style="margin-top:14px">
-          <div class="form-group" style="min-width:0">
+          <div class="form-group" style="min-width:0;flex:1">
             <label>Beginn</label>
-            <div style="display:flex;gap:8px">
-              <input type="date" style="flex:1.4;min-width:0" value="${escapeAttr(shift.startDate || '')}" onchange="autoFillEndDate(${index}, this.value)">
-              <input type="time" style="flex:1;min-width:0" value="${escapeAttr(shift.startTime || '')}" onchange="updateShiftField(${index}, 'startTime', this.value, true)">
+            <div style="display:flex;gap:6px;flex-wrap:nowrap">
+              <input type="date" style="flex:1;min-width:0;font-size:0.88rem;padding:10px 8px" value="${escapeAttr(shift.startDate || '')}" onchange="autoFillEndDate(${index}, this.value)">
+              <input type="time" style="flex:0 0 90px;min-width:0;font-size:0.88rem;padding:10px 6px" value="${escapeAttr(shift.startTime || '')}" onchange="updateShiftField(${index}, 'startTime', this.value, true)">
             </div>
           </div>
-          <div class="form-group" style="min-width:0">
+          <div class="form-group" style="min-width:0;flex:1">
             <label>Ende</label>
-            <div style="display:flex;gap:8px">
-              <input type="date" style="flex:1.4;min-width:0" value="${escapeAttr(shift.endDate || '')}" onchange="updateShiftField(${index}, 'endDate', this.value, true)">
-              <input type="time" style="flex:1;min-width:0" value="${escapeAttr(shift.endTime || '')}" onchange="updateShiftField(${index}, 'endTime', this.value, true)">
+            <div style="display:flex;gap:6px;flex-wrap:nowrap">
+              <input type="date" style="flex:1;min-width:0;font-size:0.88rem;padding:10px 8px" value="${escapeAttr(shift.endDate || '')}" onchange="updateShiftField(${index}, 'endDate', this.value, true)">
+              <input type="time" style="flex:0 0 90px;min-width:0;font-size:0.88rem;padding:10px 6px" value="${escapeAttr(shift.endTime || '')}" onchange="updateShiftField(${index}, 'endTime', this.value, true)">
             </div>
           </div>
         </div>
