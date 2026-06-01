@@ -1238,7 +1238,8 @@ body { background:#fff; margin:0; padding:0; overflow-x:hidden; }
 .preview-table { min-width:0 !important; width:100%; font-size:0.8rem; }
 .preview-table th, .preview-table td { padding:7px 6px !important; font-size:0.8rem; }
 .preview-table-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
-.invoice-header-row { display:block !important; }
+.invoice-header-row { display:flex !important; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap; }
+.invoice-number-block { text-align:right !important; margin-top:0 !important; flex-shrink:0; }
 .invoice-number-block { text-align:left !important; margin-top:14px !important; }
 .preview-footer { display:block !important; }
 .invoice-from h2 { font-size:1.2rem; }
@@ -1326,7 +1327,7 @@ function renderPreview(inv) {
       </div>
 
       <div class="recipient-block">
-        <h3>Rechnungsempfänger</h3>
+        <h3>Rechnungsempfängerin</h3>
         <p>${escapeHtml(inv.cname || '–')}<br>${escapeHtml(inv.cstreet || '')}<br>${escapeHtml((inv.cplz || '') + ' ' + (inv.ccity || ''))}</p>
       </div>
 
