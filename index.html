@@ -282,6 +282,10 @@
     pointer-events:none; z-index:1;
   }
 
+  /* Preview: kein horizontales Überlaufen auf dem Handy */
+  #view-preview { overflow-x: hidden; }
+  #preview-area { overflow-x: hidden; }
+
   @media print {
     body { background:#fff; }
     .app-header, .preview-toolbar, .form-actions, #open-settings-fab { display:none !important; }
@@ -463,6 +467,7 @@
   <div class="preview-toolbar">
     <button class="btn btn-ghost btn-sm" onclick="backToForm()">← Bearbeiten</button>
     <button class="btn btn-print" onclick="doPrint()">📄 Als PDF speichern</button>
+    <button class="btn btn-ghost btn-sm" onclick="openMailForInvoice()">✉ Per E-Mail</button>
     <button class="btn btn-primary btn-sm" onclick="saveInvoice();showList()">✓ Speichern</button>
   </div>
   <div style="padding:0 16px" id="preview-area"></div>
@@ -869,9 +874,9 @@ function deleteInvoiceById(id) {
 function previewAndPrint(id) {
   const inv = invoices.find(i => i.id === id);
   if (!inv) return;
+  _currentPreviewInv = inv;
   renderPreview(inv);
   showView('preview');
-  // Kurze Verzögerung damit die Vorschau gerendert ist, dann direkt drucken
   setTimeout(doPrint, 400);
 }
 
@@ -1087,21 +1092,19 @@ function renderShifts() {
         </div>
 
         <div class="form-row" style="margin-top:14px">
-          <div class="form-group">
-            <label>Beginn Datum</label>
-            <input type="date" value="${escapeAttr(shift.startDate || '')}" onchange="autoFillEndDate(${index}, this.value)">
+          <div class="form-group" style="min-width:0">
+            <label>Beginn</label>
+            <div style="display:flex;gap:8px">
+              <input type="date" style="flex:1.4;min-width:0" value="${escapeAttr(shift.startDate || '')}" onchange="autoFillEndDate(${index}, this.value)">
+              <input type="time" style="flex:1;min-width:0" value="${escapeAttr(shift.startTime || '')}" onchange="updateShiftField(${index}, 'startTime', this.value, true)">
+            </div>
           </div>
-          <div class="form-group">
-            <label>Beginn Uhrzeit</label>
-            <input type="time" value="${escapeAttr(shift.startTime || '')}" onchange="updateShiftField(${index}, 'startTime', this.value, true)">
-          </div>
-          <div class="form-group">
-            <label>Ende Datum</label>
-            <input type="date" value="${escapeAttr(shift.endDate || '')}" onchange="updateShiftField(${index}, 'endDate', this.value, true)">
-          </div>
-          <div class="form-group">
-            <label>Ende Uhrzeit</label>
-            <input type="time" value="${escapeAttr(shift.endTime || '')}" onchange="updateShiftField(${index}, 'endTime', this.value, true)">
+          <div class="form-group" style="min-width:0">
+            <label>Ende</label>
+            <div style="display:flex;gap:8px">
+              <input type="date" style="flex:1.4;min-width:0" value="${escapeAttr(shift.endDate || '')}" onchange="updateShiftField(${index}, 'endDate', this.value, true)">
+              <input type="time" style="flex:1;min-width:0" value="${escapeAttr(shift.endTime || '')}" onchange="updateShiftField(${index}, 'endTime', this.value, true)">
+            </div>
           </div>
         </div>
 
@@ -1191,10 +1194,22 @@ function aggregateBreakdowns(invoiceShifts) {
   return Array.from(map.values()).sort((a,b) => a.name.localeCompare(b.name));
 }
 
+let _currentPreviewInv = null;
+
 function saveAndPreview() {
   const inv = saveInvoice();
+  _currentPreviewInv = inv;
   renderPreview(inv);
   showView('preview');
+}
+
+function openMailForInvoice() {
+  const inv = _currentPreviewInv;
+  if (!inv) return;
+  const d = new Date((inv.date || today()) + 'T00:00:00');
+  const monat = MONTHS_DE ? MONTHS_DE[d.getMonth()] : (d.getMonth()+1);
+  const subject = `Rechnung Sarah Salin ${monat} ${d.getFullYear()}`;
+  window.location.href = `mailto:?subject=${encodeURIComponent(subject)}`;
 }
 
 function doPrint() {
@@ -1515,55 +1530,65 @@ function saveSettings() {
   renderShifts();
 }
 
-function showBackupModal(mode) {
+async function showBackupModal(mode) {
+  if (mode === 'export') {
+    const name = (settings.name || 'einstellungen').replace(/\s+/g,'_').toLowerCase();
+    const fileName = `pflegrechnung_${name}.json`;
+    const data = JSON.stringify(settings, null, 2);
+    const file = new File([data], fileName, { type: 'application/json' });
+    // iOS / Android: nativer Teilen-Dialog (E-Mail, Dateien, AirDrop …)
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: 'PflegeRechnung Einstellungen' }); return; }
+      catch(e) { if (e.name === 'AbortError') return; }
+    }
+    // Desktop-Fallback: Datei herunterladen
+    const url = URL.createObjectURL(new Blob([data], { type: 'application/json' }));
+    const a = document.createElement('a');
+    a.href = url; a.download = fileName; a.click();
+    URL.revokeObjectURL(url);
+    return;
+  }
+
+  // Wiederherstellen: Datei auswählen oder Text einfügen
   const existing = document.getElementById('backup-modal');
   if (existing) existing.remove();
-
-  const exportJson = JSON.stringify(settings, null, 2);
-
   const overlay = document.createElement('div');
   overlay.id = 'backup-modal';
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(44,40,32,0.45);backdrop-filter:blur(4px);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px';
-
-  const isExport = mode === 'export';
   overlay.innerHTML = `
-    <div style="background:var(--warm-white);border-radius:20px;padding:28px;width:100%;max-width:520px;box-shadow:0 20px 60px rgba(0,0,0,0.2)">
-      <h2 style="font-family:'Playfair Display',serif;font-size:1.3rem;margin-bottom:10px">${isExport ? 'Daten speichern' : 'Daten wiederherstellen'}</h2>
-      <p style="font-size:0.85rem;color:var(--ink-soft);margin-bottom:14px">
-        ${isExport
-          ? 'Kopiere den Text unten und speichere ihn in deinen Notizen oder sende ihn dir selbst per E-Mail – dann kannst du ihn jederzeit wiederherstellen.'
-          : 'Füge hier den gespeicherten Text ein und tippe auf „Wiederherstellen".'}
+    <div style="background:var(--warm-white);border-radius:20px;padding:28px;width:100%;max-width:480px;box-shadow:0 20px 60px rgba(0,0,0,0.2)">
+      <h2 style="font-family:'Playfair Display',serif;font-size:1.3rem;margin-bottom:12px">Daten wiederherstellen</h2>
+      <p style="font-size:0.85rem;color:var(--ink-soft);margin-bottom:16px">
+        Wähle die gespeicherte Backup-Datei aus.
       </p>
-      <textarea id="backup-textarea" style="width:100%;height:220px;font-family:monospace;font-size:0.78rem;border:1.5px solid var(--border);border-radius:10px;padding:10px;resize:vertical;background:#fff"
-        ${isExport ? 'readonly' : 'placeholder="Gespeicherten Text hier einfügen …"'}>${isExport ? escapeHtml(exportJson) : ''}</textarea>
-      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap">
-        <button class="btn btn-ghost" onclick="document.getElementById('backup-modal').remove()">Schließen</button>
-        ${isExport
-          ? `<button class="btn btn-primary" onclick="
-              navigator.clipboard.writeText(${JSON.stringify(exportJson)}).then(()=>{this.textContent='✓ Kopiert!';setTimeout(()=>this.textContent='Kopieren',2000)}).catch(()=>{document.getElementById('backup-textarea').select();document.execCommand('copy');this.textContent='✓ Kopiert!'})
-            ">Kopieren</button>`
-          : `<button class="btn btn-primary" onclick="restoreFromText()">Wiederherstellen</button>`
-        }
+      <label class="btn btn-primary" style="width:100%;justify-content:center;cursor:pointer">
+        📂 Datei auswählen
+        <input type="file" accept=".json,application/json" style="display:none" onchange="restoreFromFile(this)">
+      </label>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px">
+        <button class="btn btn-ghost" onclick="document.getElementById('backup-modal').remove()">Abbrechen</button>
       </div>
     </div>`;
   document.body.appendChild(overlay);
-  if (isExport) {
-    setTimeout(() => { const ta = document.getElementById('backup-textarea'); if (ta) ta.select(); }, 100);
-  }
 }
 
-function restoreFromText() {
-  const text = (document.getElementById('backup-textarea') || {}).value || '';
-  try {
-    const raw = JSON.parse(text);
-    settings = { ...structuredClone(defaultSettings), ...raw, clients: normalizeClients(raw.clients) };
-    localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
-    document.getElementById('backup-modal').remove();
-    openSettings();
-    alert('Daten erfolgreich wiederhergestellt.');
-  } catch {
-    alert('Ungültiger Text – bitte genau den kopierten Text einfügen.');
-  }
+function restoreFromFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const raw = JSON.parse(e.target.result);
+      settings = { ...structuredClone(defaultSettings), ...raw, clients: normalizeClients(raw.clients) };
+      localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
+      document.getElementById('backup-modal').remove();
+      openSettings();
+      alert('Daten erfolgreich wiederhergestellt.');
+    } catch {
+      alert('Fehler: Bitte nur eine gültige Backup-Datei verwenden.');
+    }
+  };
+  reader.readAsText(file);
 }
 
 document.getElementById('settings-modal').addEventListener('click', e => {
