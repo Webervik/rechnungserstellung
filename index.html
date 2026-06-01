@@ -321,7 +321,10 @@
     <div class="form-section">
       <div class="section-title" style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap">
         <span>Pflegeeinsätze</span>
-        <button class="btn btn-ghost btn-sm" onclick="addShift()">+ Einsatz hinzufügen</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-ghost btn-sm" onclick="showDispoModal()">📅 Aus Dienstplan laden</button>
+          <button class="btn btn-ghost btn-sm" onclick="addShift()">+ Einsatz hinzufügen</button>
+        </div>
       </div>
       <div class="hint" style="margin-bottom:14px">
         Jede Schicht wird automatisch auf Grundvergütung, Nacht-, Wochenend- und Feiertagszuschläge geprüft. Überlappende Zuschläge werden addiert.
@@ -1466,6 +1469,135 @@ document.getElementById('settings-modal').addEventListener('click', e => {
 });
 
 renderList();
+
+// ── Dienstplan-Import aus Pflegedisposition ──────────────────────────────────
+const DISPO_URL = 'https://raw.githubusercontent.com/webervik/personaldispo/main/daten.json';
+
+function showDispoModal() {
+  const existing = document.getElementById('dispo-overlay');
+  if (existing) existing.remove();
+  const now = new Date();
+  const defMonth = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const overlay = document.createElement('div');
+  overlay.id = 'dispo-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(44,40,32,0.45);backdrop-filter:blur(4px);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px';
+  overlay.innerHTML = `
+    <div style="background:var(--warm-white);border-radius:20px;padding:28px;width:100%;max-width:500px;box-shadow:0 20px 60px rgba(0,0,0,0.2);max-height:90vh;overflow-y:auto">
+      <h2 style="font-family:'Playfair Display',serif;font-size:1.3rem;margin-bottom:16px">📅 Dienste aus Dienstplan laden</h2>
+      <div style="display:flex;gap:10px;align-items:flex-end;margin-bottom:16px;flex-wrap:wrap">
+        <div class="form-group" style="flex:1;min-width:160px">
+          <label>Monat</label>
+          <input type="month" id="dispo-month" value="${defMonth}" style="border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-family:inherit;font-size:0.95rem;width:100%;outline:none">
+        </div>
+        <button class="btn btn-primary" onclick="loadDispoShifts(document.getElementById('dispo-month').value)">Laden</button>
+      </div>
+      <div id="dispo-status" style="font-size:0.85rem;color:var(--ink-faint);margin-bottom:12px"></div>
+      <div id="dispo-list"></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap">
+        <button class="btn btn-ghost" onclick="document.getElementById('dispo-overlay').remove()">Abbrechen</button>
+        <button class="btn btn-primary" id="dispo-import-btn" style="display:none" onclick="confirmDispoImport()">Einsätze übernehmen</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
+let _dispoMatches = [];
+
+async function loadDispoShifts(yearMonth) {
+  const statusEl = document.getElementById('dispo-status');
+  const listEl   = document.getElementById('dispo-list');
+  const btnEl    = document.getElementById('dispo-import-btn');
+  statusEl.textContent = 'Lade Dienstplan…';
+  listEl.innerHTML = '';
+  btnEl.style.display = 'none';
+  _dispoMatches = [];
+
+  const nurseName = (settings.name || '').trim().toLowerCase();
+  if (!nurseName) {
+    statusEl.textContent = 'Bitte zuerst deinen Namen in den Einstellungen eintragen.';
+    return;
+  }
+
+  try {
+    const res = await fetch(DISPO_URL + '?t=' + Date.now());
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+
+    const nurse = (data.nurses || []).find(n => (n.name||'').trim().toLowerCase() === nurseName);
+    if (!nurse) {
+      statusEl.textContent = `Keine Pflegerin mit dem Namen „${settings.name}" im Dienstplan gefunden.`;
+      return;
+    }
+
+    const assignments = data.assignments || {};
+    const found = [];
+    for (const [date, list] of Object.entries(assignments)) {
+      if (!date.startsWith(yearMonth)) continue;
+      if (!Array.isArray(list)) continue;
+      for (const a of list) {
+        if (a.nurseId !== nurse.id || a.vacation) continue;
+        const startTime = a.customStart || '08:00';
+        const endTime   = a.customEnd   || '22:00';
+        // Nachtdienst → Ende am nächsten Tag
+        const sH = parseInt(startTime.split(':')[0], 10);
+        const eH = parseInt(endTime.split(':')[0],   10);
+        let endDate = date;
+        if (eH < sH || (eH <= 8 && sH >= 20)) {
+          const d = new Date(date + 'T00:00:00');
+          d.setDate(d.getDate() + 1);
+          endDate = d.toISOString().slice(0, 10);
+        }
+        found.push({ date, startTime, endTime, endDate });
+      }
+    }
+    found.sort((a, b) => a.date.localeCompare(b.date));
+
+    if (!found.length) {
+      statusEl.textContent = `Keine Dienste für ${yearMonth} gefunden.`;
+      return;
+    }
+
+    _dispoMatches = found;
+    statusEl.textContent = `${found.length} Dienst${found.length !== 1 ? 'e' : ''} gefunden – bitte Auswahl bestätigen:`;
+    listEl.innerHTML = found.map((a, i) => `
+      <label style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;cursor:pointer;margin-bottom:6px;background:#fff">
+        <input type="checkbox" checked data-i="${i}" style="width:18px;height:18px;flex-shrink:0">
+        <div>
+          <div style="font-weight:600">${fmtDate(a.date)}</div>
+          <div style="font-size:0.85rem;color:var(--ink-soft)">${a.startTime} – ${a.endTime}${a.endDate !== a.date ? ' <span style="color:var(--terracotta)">(bis nächsten Tag)</span>' : ''}</div>
+        </div>
+      </label>
+    `).join('');
+    btnEl.style.display = 'inline-flex';
+  } catch(e) {
+    statusEl.textContent = 'Fehler: ' + e.message;
+  }
+}
+
+function confirmDispoImport() {
+  const checked = document.querySelectorAll('#dispo-list input[type=checkbox]:checked');
+  const selected = Array.from(checked).map(cb => _dispoMatches[parseInt(cb.dataset.i)]);
+  if (!selected.length) { alert('Keine Dienste ausgewählt.'); return; }
+
+  // Nur ersetzen wenn der einzige vorhandene Einsatz noch leer/Standard ist
+  const isDefault = shifts.length === 1 && !shifts[0].startDate && shifts[0].description === 'Pflegeeinsatz';
+  if (!isDefault && !confirm(`Die vorhandenen ${shifts.length} Einsätze werden ersetzt. Fortfahren?`)) return;
+
+  shifts = selected.map(a => ({
+    id: uid(),
+    description: 'Pflegeeinsatz',
+    startDate:  a.date,
+    startTime:  a.startTime,
+    endDate:    a.endDate,
+    endTime:    a.endTime,
+    rate:       Number(settings.defaultRate || 0),
+    notes:      ''
+  }));
+
+  document.getElementById('f-due').value = calcDueDate(document.getElementById('f-date').value, shifts);
+  document.getElementById('dispo-overlay').remove();
+  renderShifts();
+}
 </script>
 </body>
 </html>
