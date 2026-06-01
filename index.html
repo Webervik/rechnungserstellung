@@ -211,12 +211,19 @@
     .form-actions { padding-left:16px; padding-right:16px; }
     .invoice-card { align-items:flex-start; gap:14px; }
     .result-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
-    .preview-paper { margin: 20px 16px 50px; padding: 26px 20px; }
+    .preview-paper { margin: 20px 8px 50px; padding: 20px 14px; }
     .invoice-header-row, .preview-footer { display:block; }
     .invoice-number-block { text-align:left; margin-top:20px; }
     .preview-total-row { gap:20px; width:100%; justify-content:flex-end; }
     .preview-total-row .t-lbl { min-width: 130px; }
     .preview-total-row .t-val { min-width: 95px; }
+    /* Tabelle auf kleinen Bildschirmen scrollbar */
+    .preview-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; margin-bottom: 24px; }
+    .preview-table { margin-bottom: 0; min-width: 480px; }
+    .preview-table th, .preview-table td { padding: 8px 10px; font-size: 0.82rem; }
+    .invoice-from h2 { font-size: 1.3rem; }
+    .preview-footer { gap: 16px; }
+    .qr-code { width: 140px; height: 140px; }
   }
 
   @media print {
@@ -283,14 +290,6 @@
         <div class="form-group">
           <label>Fälligkeitsdatum</label>
           <input type="date" id="f-due">
-        </div>
-        <div class="form-group">
-          <label>Status</label>
-          <select id="f-status">
-            <option value="draft">Entwurf</option>
-            <option value="open">Offen</option>
-            <option value="paid">Bezahlt</option>
-          </select>
         </div>
       </div>
     </div>
@@ -366,7 +365,7 @@
 
   <div class="form-actions">
     <button class="btn btn-danger" id="btn-delete" onclick="deleteInvoice()" style="display:none">🗑 Löschen</button>
-    <button class="btn btn-ghost" onclick="saveInvoice('draft')">Entwurf speichern</button>
+    <button class="btn btn-ghost" onclick="saveInvoice();showList()">Speichern</button>
     <button class="btn btn-primary" onclick="saveAndPreview()">Vorschau & Drucken →</button>
   </div>
 </div>
@@ -377,8 +376,8 @@
   </header>
   <div class="preview-toolbar">
     <button class="btn btn-ghost btn-sm" onclick="backToForm()">← Bearbeiten</button>
-    <button class="btn btn-print" onclick="window.print()">🖨 Drucken / PDF</button>
-    <button class="btn btn-primary btn-sm" onclick="saveInvoice('open');showList()">✓ Speichern</button>
+    <button class="btn btn-print" onclick="doPrint()">📄 Als PDF speichern</button>
+    <button class="btn btn-primary btn-sm" onclick="saveInvoice();showList()">✓ Speichern</button>
   </div>
   <div style="padding:0 16px" id="preview-area"></div>
 </div>
@@ -456,20 +455,11 @@
       </div>
     </div>
 
-    <div class="form-section" style="margin-bottom:16px">
-      <div class="section-title" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
-        <span>Zuschlagsregeln</span>
-        <button class="btn btn-ghost btn-sm" onclick="addRule()">+ Regel hinzufügen</button>
-      </div>
-      <div class="hint" style="margin-bottom:12px">Typische Voreinstellung: Nacht 20–6 Uhr, Wochenende Samstag/Sonntag ganztägig, Feiertag per Häkchen am Einsatz.</div>
-      <div id="rules-container"></div>
-    </div>
-
     <div style="border-top:1px solid var(--border);padding-top:16px;margin-top:4px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between">
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
         <span style="font-size:0.8rem;color:var(--ink-faint);font-weight:600;text-transform:uppercase;letter-spacing:0.06em">Datensicherung</span>
-        <button class="btn btn-ghost btn-sm" onclick="exportSettings()">⬇ Einstellungen exportieren</button>
-        <label class="btn btn-ghost btn-sm" style="cursor:pointer">⬆ Einstellungen importieren<input type="file" accept=".json" style="display:none" onchange="importSettings(this)"></label>
+        <button class="btn btn-ghost btn-sm" onclick="showBackupModal('export')">⬇ Daten speichern</button>
+        <button class="btn btn-ghost btn-sm" onclick="showBackupModal('import')">⬆ Daten wiederherstellen</button>
       </div>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         <button class="btn btn-ghost" onclick="closeSettings()">Abbrechen</button>
@@ -482,6 +472,13 @@
 <script>
 const STORAGE_KEY_INVOICES = 'pflegepro_invoices_v1';
 const STORAGE_KEY_SETTINGS = 'pflegepro_settings_v1';
+
+// Zuschlagsregeln sind fest – keine Eingabefelder nötig
+const SURCHARGE_RULES = [
+  { id: 'night',   name: 'Nachtschicht', type: 'night',   percent: 25,  startTime: '22:00', endTime: '06:00', active: true },
+  { id: 'weekend', name: 'Wochenende',   type: 'weekend', percent: 25,  startWeekday: 6, endWeekday: 0, startTime: '00:00', endTime: '24:00', active: true },
+  { id: 'holiday', name: 'Feiertag',     type: 'holiday', percent: 100, active: true }
+];
 
 const defaultSettings = {
   name: '',
@@ -496,12 +493,7 @@ const defaultSettings = {
   bankName: '',
   bankIban: '',
   bankBic: '',
-  clients: [],
-  surchargeRules: [
-    { id: uid(), name: 'Nachtschicht', type: 'night', percent: 25, startTime: '20:00', endTime: '06:00', active: true },
-    { id: uid(), name: 'Wochenende', type: 'weekend', percent: 25, startWeekday: 6, endWeekday: 0, startTime: '00:00', endTime: '24:00', active: true },
-    { id: uid(), name: 'Feiertag', type: 'holiday', percent: 50, active: true }
-  ]
+  clients: []
 };
 
 let invoices = loadInvoices();
@@ -516,21 +508,6 @@ function uid() {
 function loadInvoices() {
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY_INVOICES) || '[]'); }
   catch { return []; }
-}
-
-function normalizeRules(rules) {
-  if (!Array.isArray(rules) || !rules.length) return structuredClone(defaultSettings.surchargeRules);
-  return rules.map(rule => ({
-    id: rule.id || uid(),
-    name: rule.name || 'Zuschlag',
-    type: rule.type || 'night',
-    percent: Number(rule.percent ?? 0),
-    startTime: rule.startTime || '00:00',
-    endTime: rule.endTime || '24:00',
-    startWeekday: rule.startWeekday ?? 6,
-    endWeekday: rule.endWeekday ?? 0,
-    active: rule.active !== false
-  }));
 }
 
 function normalizeClients(clients) {
@@ -554,8 +531,7 @@ function loadSettings() {
     return {
       ...structuredClone(defaultSettings),
       ...raw,
-      clients: normalizeClients(raw.clients),
-      surchargeRules: normalizeRules(raw.surchargeRules)
+      clients: normalizeClients(raw.clients)
     };
   } catch {
     return structuredClone(defaultSettings);
@@ -728,7 +704,6 @@ function newInvoice() {
   document.getElementById('f-nr').value = nextNr();
   document.getElementById('f-date').value = today();
   document.getElementById('f-due').value = calcDueDate(today(), shifts);
-  document.getElementById('f-status').value = 'open';
   document.getElementById('f-cname').value = '';
   document.getElementById('f-cstreet').value = '';
   document.getElementById('f-cplz').value = '';
@@ -750,7 +725,6 @@ function editInvoice(id) {
   document.getElementById('f-nr').value = inv.nr || '';
   document.getElementById('f-date').value = inv.date || today();
   document.getElementById('f-due').value = inv.due || '';
-  document.getElementById('f-status').value = inv.status || 'open';
   document.getElementById('f-cname').value = inv.cname || '';
   document.getElementById('f-cstreet').value = inv.cstreet || '';
   document.getElementById('f-cplz').value = inv.cplz || '';
@@ -784,6 +758,22 @@ function deleteInvoice() {
   showList();
 }
 
+function deleteInvoiceById(id) {
+  if (!confirm('Rechnung wirklich löschen?')) return;
+  invoices = invoices.filter(i => i.id !== id);
+  saveAllInvoices();
+  renderList();
+}
+
+function previewAndPrint(id) {
+  const inv = invoices.find(i => i.id === id);
+  if (!inv) return;
+  renderPreview(inv);
+  showView('preview');
+  // Kurze Verzögerung damit die Vorschau gerendert ist, dann direkt drucken
+  setTimeout(doPrint, 400);
+}
+
 function renderList() {
   const el = document.getElementById('invoice-list');
   const cnt = document.getElementById('list-count');
@@ -794,8 +784,6 @@ function renderList() {
   }
   const sorted = [...invoices].sort((a,b) => (b.date || '').localeCompare(a.date || ''));
   cnt.textContent = `${invoices.length} Rechnung${invoices.length !== 1 ? 'en' : ''}`;
-  const badgeMap = { draft:'badge-draft', open:'badge-open', paid:'badge-paid' };
-  const labelMap = { draft:'Entwurf', open:'Offen', paid:'Bezahlt' };
   el.innerHTML = sorted.map(inv => `
     <div class="invoice-card" onclick="editInvoice('${inv.id}')">
       <div class="invoice-card-left">
@@ -805,10 +793,11 @@ function renderList() {
           <div class="card-meta">Nr. ${escapeHtml(inv.nr || '–')} · ${fmtDate(inv.date || '')}</div>
         </div>
       </div>
-      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;justify-content:flex-end">
-        <span class="badge ${badgeMap[inv.status] || 'badge-draft'}">${labelMap[inv.status] || 'Entwurf'}</span>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end">
         <div class="card-amount">${eur(inv.total || 0)}</div>
+        <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();previewAndPrint('${inv.id}')">📄 PDF</button>
         <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();duplicateInvoice('${inv.id}')">Kopie</button>
+        <button class="btn btn-danger btn-sm" onclick="event.stopPropagation();deleteInvoiceById('${inv.id}')">🗑</button>
       </div>
     </div>
   `).join('');
@@ -828,6 +817,42 @@ function removeShift(index) {
 function updateShiftField(index, field, value, shouldRender = true) {
   shifts[index][field] = value;
   if (shouldRender) renderShifts();
+}
+
+// Berliner Feiertage – automatische Berechnung
+function easterSunday(year) {
+  const a = year % 19, b = Math.floor(year/100), c = year % 100;
+  const d = Math.floor(b/4), e = b % 4, f = Math.floor((b+8)/25);
+  const g = Math.floor((b-f+1)/3), h = (19*a+b-d-g+15) % 30;
+  const i = Math.floor(c/4), k = c % 4, l = (32+2*e+2*i-h-k) % 7;
+  const m = Math.floor((a+11*h+22*l)/451);
+  const month = Math.floor((h+l-7*m+114)/31);
+  const day = ((h+l-7*m+114) % 31) + 1;
+  return new Date(year, month-1, day);
+}
+function getBerlinHolidays(year) {
+  const e = easterSunday(year);
+  const add = (d, n) => { const r = new Date(d); r.setDate(r.getDate()+n); return r.toISOString().slice(0,10); };
+  return new Set([
+    `${year}-01-01`,   // Neujahr
+    `${year}-03-08`,   // Internationaler Frauentag (Berlin)
+    add(e, -2),        // Karfreitag
+    add(e, 0),         // Ostersonntag
+    add(e, 1),         // Ostermontag
+    `${year}-05-01`,   // Tag der Arbeit
+    add(e, 39),        // Christi Himmelfahrt
+    add(e, 49),        // Pfingstsonntag
+    add(e, 50),        // Pfingstmontag
+    `${year}-10-03`,   // Tag der Deutschen Einheit
+    `${year}-12-25`,   // 1. Weihnachtstag
+    `${year}-12-26`,   // 2. Weihnachtstag
+  ]);
+}
+const _holidayCache = {};
+function isHoliday(dateStr) {
+  const year = parseInt(dateStr.slice(0,4), 10);
+  if (!_holidayCache[year]) _holidayCache[year] = getBerlinHolidays(year);
+  return _holidayCache[year].has(dateStr);
 }
 
 function calculateShift(shift) {
@@ -858,6 +883,7 @@ function calculateShift(shift) {
   const hourlyRate = Number(shift.rate || 0);
   const breakdownMap = new Map();
   let cursor = new Date(start);
+  let curDateStr = '', curIsHoliday = false;
 
   while (cursor < end) {
     const next = new Date(cursor.getTime() + 60000);
@@ -865,9 +891,11 @@ function calculateShift(shift) {
 
     const minuteOfDay = cursor.getHours() * 60 + cursor.getMinutes();
     const weekday = cursor.getDay();
+    const dateStr = cursor.toISOString().slice(0,10);
+    if (dateStr !== curDateStr) { curDateStr = dateStr; curIsHoliday = isHoliday(dateStr); }
 
-    settings.surchargeRules.filter(rule => rule.active !== false).forEach(rule => {
-      if (ruleMatches(rule, minuteOfDay, weekday, !!shift.holiday)) {
+    SURCHARGE_RULES.forEach(rule => {
+      if (ruleMatches(rule, minuteOfDay, weekday, curIsHoliday)) {
         const amount = hourlyRate / 60 * (Number(rule.percent || 0) / 100);
         result.surchargeAmount += amount;
         const prev = breakdownMap.get(rule.id) || { name: rule.name, percent: Number(rule.percent || 0), minutes: 0, amount: 0 };
@@ -970,16 +998,7 @@ function renderShifts() {
         </div>
 
         <div class="form-row" style="margin-top:14px">
-          <div class="form-group" style="flex:1.3">
-            <div class="checkbox-line">
-              <input type="checkbox" ${shift.holiday ? 'checked' : ''} onchange="updateShiftField(${index}, 'holiday', this.checked)">
-              <div>
-                <div style="font-weight:700">Feiertag</div>
-                <div class="hint" style="margin-top:2px">Setze das Häkchen, wenn für diesen Einsatz Feiertagszuschlag gelten soll.</div>
-              </div>
-            </div>
-          </div>
-          <div class="form-group" style="flex:1.7">
+          <div class="form-group">
             <label>Interne Notiz</label>
             <input type="text" value="${escapeAttr(shift.notes || '')}" oninput="updateShiftField(${index}, 'notes', this.value, false)" placeholder="optional">
           </div>
@@ -1026,12 +1045,10 @@ function collectInvoice() {
     nr: document.getElementById('f-nr').value,
     date: document.getElementById('f-date').value,
     due: document.getElementById('f-due').value,
-    status: document.getElementById('f-status').value,
     cname: document.getElementById('f-cname').value,
     cstreet: document.getElementById('f-cstreet').value,
     cplz: document.getElementById('f-cplz').value,
     ccity: document.getElementById('f-ccity').value,
-    clientId: document.getElementById('f-client-select').value || '',
     intro: document.getElementById('f-intro').value,
     note: document.getElementById('f-note').value,
     shifts: JSON.parse(JSON.stringify(shifts)),
@@ -1042,9 +1059,8 @@ function collectInvoice() {
   };
 }
 
-function saveInvoice(forcedStatus) {
+function saveInvoice() {
   const inv = collectInvoice();
-  if (forcedStatus) inv.status = forcedStatus;
   const idx = invoices.findIndex(i => i.id === inv.id);
   if (idx >= 0) invoices[idx] = inv; else invoices.push(inv);
   currentId = inv.id;
@@ -1068,9 +1084,45 @@ function aggregateBreakdowns(invoiceShifts) {
 }
 
 function saveAndPreview() {
-  const inv = saveInvoice(null);
+  const inv = saveInvoice();
   renderPreview(inv);
   showView('preview');
+}
+
+function doPrint() {
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  if (!isIOS) { window.print(); return; }
+
+  // iOS: sauberes Druckfenster mit eigenem Print-Button öffnen
+  const area = document.getElementById('preview-area').innerHTML;
+  const style = document.querySelector('style').textContent;
+  const win = window.open('', '_blank');
+  if (!win) { alert('Bitte Pop-ups für diese Seite erlauben und erneut tippen.'); return; }
+  win.document.write(`<!DOCTYPE html><html lang="de"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600&family=DM+Sans:wght@300;400;500;700&display=swap" rel="stylesheet">
+<style>
+${style}
+body { background:#fff; margin:0; padding:0; }
+.preview-paper { border:none; box-shadow:none; border-radius:0; margin:0 auto; padding:10mm 8mm; max-width:100%; }
+#ios-bar { font-family:sans-serif; font-size:14px; padding:12px 16px; background:#4E7A6A; color:#fff; display:flex; align-items:center; justify-content:space-between; gap:12px; position:sticky; top:0; z-index:99; }
+#ios-bar button { background:#fff; color:#4E7A6A; border:none; border-radius:8px; padding:9px 18px; font-size:14px; font-weight:700; cursor:pointer; }
+@media print { #ios-bar { display:none !important; } .preview-paper { padding:12mm 10mm; } }
+</style>
+</head><body>
+<div id="ios-bar">
+  <span>📄 Rechnung als PDF speichern</span>
+  <button onclick="window.print()">Drucken / PDF</button>
+</div>
+${area}
+<script>
+  // Auf iOS 16.4+ klappt window.print() direkt
+  window.onload = function() {
+    try { window.print(); } catch(e) {}
+  };
+<\/script>
+</body></html>`);
+  win.document.close();
 }
 
 function renderPreview(inv) {
@@ -1085,7 +1137,7 @@ function renderPreview(inv) {
       <tr>
         <td>
           <div style="font-weight:700">${escapeHtml(shift.description || 'Pflegeeinsatz')}</div>
-          <div class="preview-mini-note">${fmtDate(shift.startDate)} ${escapeHtml(shift.startTime)} – ${fmtDate(shift.endDate)} ${escapeHtml(shift.endTime)}${shift.holiday ? ' · Feiertag markiert' : ''}</div>
+          <div class="preview-mini-note">${fmtDate(shift.startDate)} ${escapeHtml(shift.startTime)} – ${fmtDate(shift.endDate)} ${escapeHtml(shift.endTime)}</div>
           <div class="preview-mini-note">${infoLine}</div>
         </td>
         <td>${fmtDate(shift.startDate)}</td>
@@ -1138,6 +1190,7 @@ function renderPreview(inv) {
 
       ${inv.intro ? `<p style="font-size:0.92rem;line-height:1.7;margin-bottom:20px;color:var(--ink)">${escapeHtml(inv.intro)}</p>` : ''}
 
+      <div class="preview-table-wrap">
       <table class="preview-table">
         <thead>
           <tr>
@@ -1150,6 +1203,7 @@ function renderPreview(inv) {
         </thead>
         <tbody>${rows}</tbody>
       </table>
+      </div>
 
       ${breakdownHtml}
 
@@ -1247,86 +1301,10 @@ function openSettings() {
   document.getElementById('s-bank-name').value = settings.bankName || '';
   document.getElementById('s-bank-iban').value = settings.bankIban || '';
   document.getElementById('s-bank-bic').value = settings.bankBic || '';
-  renderRules();
   renderClients();
   document.getElementById('settings-modal').classList.add('open');
 }
 function closeSettings() { document.getElementById('settings-modal').classList.remove('open'); }
-
-function renderRules() {
-  const container = document.getElementById('rules-container');
-  const rules = settings.surchargeRules || [];
-  container.innerHTML = rules.map((rule, index) => `
-    <div class="rule-card">
-      <div class="rule-card-header">
-        <div class="rule-name">${escapeHtml(rule.name || 'Zuschlag')}</div>
-        <button class="btn btn-danger btn-sm" onclick="removeRule(${index})" ${rules.length <= 1 ? 'disabled' : ''}>Entfernen</button>
-      </div>
-      <div class="form-row">
-        <div class="form-group" style="min-width:220px">
-          <label>Name</label>
-          <input type="text" value="${escapeAttr(rule.name || '')}" oninput="updateRule(${index}, 'name', this.value)">
-        </div>
-        <div class="form-group">
-          <label>Typ</label>
-          <select onchange="updateRule(${index}, 'type', this.value)">
-            <option value="night" ${rule.type === 'night' ? 'selected' : ''}>Zeitfenster / Nacht</option>
-            <option value="weekend" ${rule.type === 'weekend' ? 'selected' : ''}>Wochenende / Wochentage</option>
-            <option value="holiday" ${rule.type === 'holiday' ? 'selected' : ''}>Feiertag</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>Zuschlag in %</label>
-          <input type="number" min="0" step="0.5" value="${escapeAttr(rule.percent ?? 0)}" oninput="updateRule(${index}, 'percent', this.value)">
-        </div>
-        <div class="form-group" style="min-width:140px">
-          <label>Aktiv</label>
-          <select onchange="updateRule(${index}, 'active', this.value === 'true')">
-            <option value="true" ${rule.active !== false ? 'selected' : ''}>Ja</option>
-            <option value="false" ${rule.active === false ? 'selected' : ''}>Nein</option>
-          </select>
-        </div>
-      </div>
-      ${rule.type === 'night' ? `
-        <div class="form-row" style="margin-top:12px">
-          <div class="form-group">
-            <label>Beginn</label>
-            <input type="time" value="${escapeAttr((rule.startTime || '20:00') === '24:00' ? '23:59' : (rule.startTime || '20:00'))}" oninput="updateRule(${index}, 'startTime', this.value)">
-          </div>
-          <div class="form-group">
-            <label>Ende</label>
-            <input type="time" value="${escapeAttr((rule.endTime || '06:00') === '24:00' ? '23:59' : (rule.endTime || '06:00'))}" oninput="updateRule(${index}, 'endTime', this.value === '23:59' ? '24:00' : this.value)">
-          </div>
-        </div>
-      ` : ''}
-      ${rule.type === 'weekend' ? `
-        <div class="form-row" style="margin-top:12px">
-          <div class="form-group">
-            <label>Von Wochentag</label>
-            <select onchange="updateRule(${index}, 'startWeekday', Number(this.value))">
-              ${[0,1,2,3,4,5,6].map(d => `<option value="${d}" ${Number(rule.startWeekday ?? 6) === d ? 'selected' : ''}>${weekdayLabel(d)}</option>`).join('')}
-            </select>
-          </div>
-          <div class="form-group">
-            <label>Bis Wochentag</label>
-            <select onchange="updateRule(${index}, 'endWeekday', Number(this.value))">
-              ${[0,1,2,3,4,5,6].map(d => `<option value="${d}" ${Number(rule.endWeekday ?? 0) === d ? 'selected' : ''}>${weekdayLabel(d)}</option>`).join('')}
-            </select>
-          </div>
-          <div class="form-group">
-            <label>Beginn Uhrzeit</label>
-            <input type="time" value="${escapeAttr((rule.startTime || '00:00') === '24:00' ? '23:59' : (rule.startTime || '00:00'))}" oninput="updateRule(${index}, 'startTime', this.value)">
-          </div>
-          <div class="form-group">
-            <label>Ende Uhrzeit</label>
-            <input type="time" value="${escapeAttr((rule.endTime || '24:00') === '24:00' ? '23:59' : (rule.endTime || '23:59'))}" oninput="updateRule(${index}, 'endTime', this.value === '23:59' ? '24:00' : this.value)">
-          </div>
-        </div>
-      ` : ''}
-      ${rule.type === 'holiday' ? `<div class="hint" style="margin-top:12px">Dieser Zuschlag greift, wenn im Einsatz das Feiertags-Häkchen gesetzt ist.</div>` : ''}
-    </div>
-  `).join('');
-}
 
 function renderClients() {
   const container = document.getElementById('clients-container');
@@ -1410,27 +1388,6 @@ function removeClientProfile(index) {
   renderClients();
 }
 
-function addRule() {
-  settings.surchargeRules.push({
-    id: uid(),
-    name: 'Neuer Zuschlag',
-    type: 'night',
-    percent: 25,
-    startTime: '20:00',
-    endTime: '06:00',
-    active: true
-  });
-  renderRules();
-}
-function updateRule(index, field, value) {
-  settings.surchargeRules[index][field] = value;
-}
-function removeRule(index) {
-  if ((settings.surchargeRules || []).length <= 1) return;
-  settings.surchargeRules.splice(index, 1);
-  renderRules();
-}
-
 function saveSettings() {
   settings = {
     ...settings,
@@ -1446,50 +1403,63 @@ function saveSettings() {
     bankName: document.getElementById('s-bank-name').value,
     bankIban: document.getElementById('s-bank-iban').value,
     bankBic: document.getElementById('s-bank-bic').value,
-    clients: normalizeClients(settings.clients),
-    surchargeRules: normalizeRules(settings.surchargeRules)
+    clients: normalizeClients(settings.clients)
   };
   localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
   shifts = shifts.map(s => ({ ...s, rate: Number(s.rate || settings.defaultRate || 0) }));
-  renderClientSelect(document.getElementById('f-client-select') ? document.getElementById('f-client-select').value : '');
   closeSettings();
   renderShifts();
 }
 
-function exportSettings() {
-  const data = JSON.stringify(settings, null, 2);
-  const blob = new Blob([data], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  const name = (settings.name || 'einstellungen').replace(/\s+/g, '_').toLowerCase();
-  a.href = url;
-  a.download = `pflegrechnung_${name}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
+function showBackupModal(mode) {
+  const existing = document.getElementById('backup-modal');
+  if (existing) existing.remove();
+
+  const exportJson = JSON.stringify(settings, null, 2);
+
+  const overlay = document.createElement('div');
+  overlay.id = 'backup-modal';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(44,40,32,0.45);backdrop-filter:blur(4px);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px';
+
+  const isExport = mode === 'export';
+  overlay.innerHTML = `
+    <div style="background:var(--warm-white);border-radius:20px;padding:28px;width:100%;max-width:520px;box-shadow:0 20px 60px rgba(0,0,0,0.2)">
+      <h2 style="font-family:'Playfair Display',serif;font-size:1.3rem;margin-bottom:10px">${isExport ? 'Daten speichern' : 'Daten wiederherstellen'}</h2>
+      <p style="font-size:0.85rem;color:var(--ink-soft);margin-bottom:14px">
+        ${isExport
+          ? 'Kopiere den Text unten und speichere ihn in deinen Notizen oder sende ihn dir selbst per E-Mail – dann kannst du ihn jederzeit wiederherstellen.'
+          : 'Füge hier den gespeicherten Text ein und tippe auf „Wiederherstellen".'}
+      </p>
+      <textarea id="backup-textarea" style="width:100%;height:220px;font-family:monospace;font-size:0.78rem;border:1.5px solid var(--border);border-radius:10px;padding:10px;resize:vertical;background:#fff"
+        ${isExport ? 'readonly' : 'placeholder="Gespeicherten Text hier einfügen …"'}>${isExport ? escapeHtml(exportJson) : ''}</textarea>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap">
+        <button class="btn btn-ghost" onclick="document.getElementById('backup-modal').remove()">Schließen</button>
+        ${isExport
+          ? `<button class="btn btn-primary" onclick="
+              navigator.clipboard.writeText(${JSON.stringify(exportJson)}).then(()=>{this.textContent='✓ Kopiert!';setTimeout(()=>this.textContent='Kopieren',2000)}).catch(()=>{document.getElementById('backup-textarea').select();document.execCommand('copy');this.textContent='✓ Kopiert!'})
+            ">Kopieren</button>`
+          : `<button class="btn btn-primary" onclick="restoreFromText()">Wiederherstellen</button>`
+        }
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  if (isExport) {
+    setTimeout(() => { const ta = document.getElementById('backup-textarea'); if (ta) ta.select(); }, 100);
+  }
 }
 
-function importSettings(input) {
-  const file = input.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = e => {
-    try {
-      const raw = JSON.parse(e.target.result);
-      settings = {
-        ...structuredClone(defaultSettings),
-        ...raw,
-        clients: normalizeClients(raw.clients),
-        surchargeRules: normalizeRules(raw.surchargeRules)
-      };
-      localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
-      openSettings();
-      alert('Einstellungen erfolgreich importiert.');
-    } catch {
-      alert('Fehler: Die Datei konnte nicht gelesen werden. Bitte nur eine gültige Exportdatei verwenden.');
-    }
-    input.value = '';
-  };
-  reader.readAsText(file);
+function restoreFromText() {
+  const text = (document.getElementById('backup-textarea') || {}).value || '';
+  try {
+    const raw = JSON.parse(text);
+    settings = { ...structuredClone(defaultSettings), ...raw, clients: normalizeClients(raw.clients) };
+    localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
+    document.getElementById('backup-modal').remove();
+    openSettings();
+    alert('Daten erfolgreich wiederhergestellt.');
+  } catch {
+    alert('Ungültiger Text – bitte genau den kopierten Text einfügen.');
+  }
 }
 
 document.getElementById('settings-modal').addEventListener('click', e => {
