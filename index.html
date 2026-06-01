@@ -704,10 +704,10 @@ function newInvoice() {
   document.getElementById('f-nr').value = nextNr();
   document.getElementById('f-date').value = today();
   document.getElementById('f-due').value = calcDueDate(today(), shifts);
-  document.getElementById('f-cname').value = '';
-  document.getElementById('f-cstreet').value = '';
-  document.getElementById('f-cplz').value = '';
-  document.getElementById('f-ccity').value = '';
+  document.getElementById('f-cname').value = 'Sarah Salin';
+  document.getElementById('f-cstreet').value = 'Meraner Str. 18a';
+  document.getElementById('f-cplz').value = '10825';
+  document.getElementById('f-ccity').value = 'Berlin';
   renderClientSelect('');
   document.getElementById('f-intro').value = 'Abrechnung der erbrachten Pflegeleistungen.';
   document.getElementById('f-note').value = 'Bitte überweisen Sie den Betrag ohne Abzug auf das unten genannte Konto.';
