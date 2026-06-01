@@ -801,9 +801,9 @@ function saveCurrentAsClient() {
 
 function newInvoice() {
   showMonthPicker((year, month) => {
-    // Rechnungsdatum = letzter Tag des gewählten Monats
-    const lastDay = new Date(year, month + 1, 0);
-    const invoiceDate = `${year}-${String(month+1).padStart(2,'0')}-${String(lastDay.getDate()).padStart(2,'0')}`;
+    // Gewählten Monat für Dienstplan-Import merken
+    _dispoPreselectedMonth = `${year}-${String(month+1).padStart(2,'0')}`;
+    const invoiceDate = today(); // Rechnungsdatum = heute
     currentId = null;
     shifts = [createShift()];
     document.getElementById('f-nr').value = nextNr();
@@ -1727,6 +1727,7 @@ function _confirmMonthPick() {
 
 // ── Dienstplan-Import aus Pflegedisposition ──────────────────────────────────
 const DISPO_URL = 'https://raw.githubusercontent.com/webervik/personaldispo/main/daten.json';
+let _dispoPreselectedMonth = '';
 
 // Zuordnung: Kurzname in der Pflegedisposition → voller Name in der Rechnungsapp
 const DISPO_NAME_MAP = {
@@ -1745,7 +1746,7 @@ function showDispoModal() {
   const existing = document.getElementById('dispo-overlay');
   if (existing) existing.remove();
   const now = new Date();
-  const defMonth = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const defMonth = _dispoPreselectedMonth || `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
   const overlay = document.createElement('div');
   overlay.id = 'dispo-overlay';
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(44,40,32,0.45);backdrop-filter:blur(4px);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px';
