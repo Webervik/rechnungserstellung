@@ -1685,6 +1685,13 @@ function _confirmMonthPick() {
 // ── Dienstplan-Import aus Pflegedisposition ──────────────────────────────────
 const DISPO_URL = 'https://raw.githubusercontent.com/webervik/personaldispo/main/daten.json';
 
+// Zuordnung: Kurzname in der Pflegedisposition → voller Name in der Rechnungsapp
+const DISPO_NAME_MAP = {
+  'Zuzana':  'Zuzana Karabincikova',
+  'Gülcan':  'Gülcan Bilir',
+  'Zandraa': 'Enkhtsatsral Zandraa - Göbel'
+};
+
 function showDispoModal() {
   const nurseName = (settings.name || '').trim();
   if (!nurseName) {
@@ -1743,7 +1750,11 @@ async function loadDispoShifts(yearMonth) {
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
 
-    const nurse = (data.nurses || []).find(n => (n.name||'').trim().toLowerCase() === nurseName);
+    const nurse = (data.nurses || []).find(n => {
+      const dispoName = (n.name || '').trim();
+      const fullName  = DISPO_NAME_MAP[dispoName] || dispoName;
+      return fullName.toLowerCase() === nurseName || dispoName.toLowerCase() === nurseName;
+    });
     if (!nurse) {
       statusEl.textContent = `Keine Pflegerin mit dem Namen „${settings.name}" im Dienstplan gefunden.`;
       return;
