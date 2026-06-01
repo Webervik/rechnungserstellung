@@ -990,7 +990,13 @@ function calculateShift(shift) {
   }
 
   const start = new Date(`${shift.startDate}T${shift.startTime}:00`);
-  const end = new Date(`${shift.endDate}T${shift.endTime}:00`);
+  let end = new Date(`${shift.endDate}T${shift.endTime}:00`);
+  // "00:00" als Tagesende (Mitternacht) behandeln – wenn end <= start, einen Tag vorwärts
+  if (!(end > start) && shift.endTime === '00:00') {
+    const d = new Date(shift.endDate + 'T00:00:00');
+    d.setDate(d.getDate() + 1);
+    end = new Date(localISO(d) + 'T00:00:00');
+  }
   if (!(end > start)) {
     result.valid = false;
     result.error = 'Das Ende muss nach dem Beginn liegen.';
@@ -1244,38 +1250,40 @@ ${area}
 
 function renderPreview(inv) {
   const s = settings;
-  const breakdown = aggregateBreakdowns(inv.shifts);
+
   const rows = inv.shifts.map(shift => {
     const calc = calculateShift(shift);
-    const infoLine = calc.breakdown.length
-      ? calc.breakdown.map(item => `${escapeHtml(item.name)} ${item.percent}%: ${minutesToHours(item.minutes)} h`).join(' · ')
-      : 'Keine Zuschläge';
-    return `
-      <tr>
-        <td>
-          <div style="font-weight:700">${escapeHtml(shift.description || 'Pflegeeinsatz')}</div>
-          <div class="preview-mini-note">${fmtDate(shift.startDate)} ${escapeHtml(shift.startTime)} – ${fmtDate(shift.endDate)} ${escapeHtml(shift.endTime)}</div>
-          <div class="preview-mini-note">${infoLine}</div>
-        </td>
-        <td>${fmtDate(shift.startDate)}</td>
-        <td>${minutesToHours(calc.totalMinutes)}</td>
-        <td>${eur(shift.rate || 0)}</td>
-        <td>${eur(calc.totalAmount)}</td>
-      </tr>
-    `;
-  }).join('');
+    const rate = Number(shift.rate || 0);
+    const timeLabel = fmtDate(shift.startDate) === fmtDate(shift.endDate)
+      ? `${fmtDate(shift.startDate)}, ${shift.startTime}–${shift.endTime}`
+      : `${fmtDate(shift.startDate)} ${shift.startTime} – ${fmtDate(shift.endDate)} ${shift.endTime}`;
 
-  const breakdownHtml = breakdown.length ? `
-    <div style="margin-bottom:24px">
-      <div class="preview-subsection-title">Zuschlagsaufschlüsselung</div>
-      ${breakdown.map(item => `
-        <div style="display:flex;justify-content:space-between;gap:18px;font-size:0.86rem;color:var(--ink);margin-top:4px">
-          <span>${escapeHtml(item.name)} (${item.percent} %) · ${minutesToHours(item.minutes)} h</span>
-          <span>${eur(item.amount)}</span>
-        </div>
-      `).join('')}
-    </div>
-  ` : '';
+    const baseRow = `<tr>
+      <td>
+        <div style="font-weight:700">${escapeHtml(shift.description || 'Pflegeeinsatz')}</div>
+        <div class="preview-mini-note">${timeLabel}</div>
+      </td>
+      <td>${minutesToHours(calc.totalMinutes)}</td>
+      <td>${eur(rate)}</td>
+      <td>${eur(calc.baseAmount)}</td>
+    </tr>`;
+
+    const surchargeRows = calc.breakdown.map(item => `<tr style="background:#F9F5EF">
+      <td style="padding-left:20px;font-size:0.86rem;color:var(--ink-soft)">
+        ↳ ${escapeHtml(item.name)} (${item.percent} %)
+      </td>
+      <td style="font-size:0.86rem;color:var(--ink-soft)">${minutesToHours(item.minutes)}</td>
+      <td style="font-size:0.86rem;color:var(--ink-soft)">${eur(rate * item.percent / 100)}</td>
+      <td style="font-size:0.86rem;color:var(--ink-soft)">${eur(item.amount)}</td>
+    </tr>`).join('');
+
+    const subtotalRow = calc.breakdown.length ? `<tr style="border-top:1px solid var(--border)">
+      <td colspan="3" style="text-align:right;font-size:0.86rem;color:var(--ink-soft);padding-right:8px">Summe Einsatz</td>
+      <td style="font-weight:700">${eur(calc.totalAmount)}</td>
+    </tr>` : '';
+
+    return baseRow + surchargeRows + subtotalRow;
+  }).join('');
 
   const bankLines = [s.bankHolder, s.bankName, s.bankIban ? 'IBAN: ' + s.bankIban : '', s.bankBic ? 'BIC: ' + s.bankBic : ''].filter(Boolean);
   const epcPayload = buildEpcQrPayload(inv, s);
@@ -1296,7 +1304,11 @@ function renderPreview(inv) {
         <div class="invoice-number-block">
           <div class="invoice-label">Rechnung</div>
           <div class="invoice-num">${escapeHtml(inv.nr || '–')}</div>
-          <div class="invoice-date">Datum: ${fmtDate(inv.date)}<br>Fällig: ${fmtDate(inv.due)}</div>
+          <div class="invoice-date">
+            Datum: ${fmtDate(inv.date)}<br>
+            Fällig: ${fmtDate(inv.due)}<br><br>
+            <strong style="font-size:1.1rem;color:var(--ink)">${eur(inv.total)}</strong>
+          </div>
         </div>
       </div>
 
@@ -1311,8 +1323,7 @@ function renderPreview(inv) {
       <table class="preview-table">
         <thead>
           <tr>
-            <th style="border-radius:6px 0 0 6px">Leistung</th>
-            <th>Datum</th>
+            <th style="border-radius:6px 0 0 6px">Leistung / Zeitraum</th>
             <th>Std.</th>
             <th>€/Std.</th>
             <th style="border-radius:0 6px 6px 0">Betrag</th>
@@ -1322,17 +1333,7 @@ function renderPreview(inv) {
       </table>
       </div>
 
-      ${breakdownHtml}
-
       <div class="preview-totals">
-        <div class="preview-total-row">
-          <span class="t-lbl">Grundbetrag</span>
-          <span class="t-val">${eur(inv.base)}</span>
-        </div>
-        <div class="preview-total-row">
-          <span class="t-lbl">Zuschläge</span>
-          <span class="t-val">${eur(inv.surcharge)}</span>
-        </div>
         <div class="preview-total-row preview-total-grand">
           <span class="t-lbl">Gesamtbetrag</span>
           <span class="t-val">${eur(inv.total)}</span>
