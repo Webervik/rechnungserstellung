@@ -1220,7 +1220,9 @@ function openMailForInvoice() {
   const inv = _currentPreviewInv;
   if (!inv) return;
   const subject = _invoiceTitle(inv);
-  const body = `Hallo,\n\nanbei meine Rechnung für ${subject}.\n\nBitte die PDF-Datei als Anhang hinzufügen.`;
+  const d = new Date((inv.date || today()) + 'T00:00:00');
+  const monat = MONTHS_DE[d.getMonth()] + ' ' + d.getFullYear();
+  const body = `Hallo,\n\nanbei meine Rechnung für Sarah Salin für den Monat ${monat}.\n\nMit freundlichen Grüßen\n${(settings.name || '').trim()}`;
   window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 
