@@ -1232,50 +1232,180 @@ function doPrint() {
   const isMobile = isIOS || isAndroid;
   if (!isMobile) { window.print(); return; }
 
-  // Mobil (iOS + Android): sauberes Druckfenster öffnen
-  const area = document.getElementById('preview-area').innerHTML;
-  const style = document.querySelector('style').textContent;
-  const pdfTitle = _currentPreviewInv ? _invoiceTitle(_currentPreviewInv).replace(/\s+/g, '_') : 'Rechnung';
-
+  const inv = _currentPreviewInv;
+  if (!inv) return;
+  const pdfTitle = _invoiceTitle(inv).replace(/\s+/g, '_');
   const hint = isIOS
-    ? 'Tippe auf das <strong>Teilen-Symbol (□↑)</strong> → <strong>Drucken</strong> → links unten das PDF-Symbol antippen → <strong>In Dateien sichern</strong>.'
-    : 'Tippe auf <strong>Drucken / PDF</strong> → im Druckdialog oben als Drucker <strong>„Als PDF speichern"</strong> wählen.';
+    ? 'Tippe auf das <strong>Teilen-Symbol (□↑)</strong> unten → <strong>Drucken</strong> → im Vorschaufenster das PDF-Symbol links unten antippen → <strong>In Dateien sichern</strong>.'
+    : 'Tippe auf <strong>Drucken / PDF</strong> → im Druckdialog als Drucker <strong>„Als PDF speichern"</strong> wählen → Download-Symbol antippen.';
 
   const win = window.open('', '_blank');
   if (!win) { alert('Bitte Pop-ups für diese Seite erlauben und erneut tippen.'); return; }
   win.document.write(`<!DOCTYPE html><html lang="de"><head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${pdfTitle}</title>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600&family=DM+Sans:wght@300;400;500;700&display=swap" rel="stylesheet">
 <style>
-${style}
-body { background:#fff; margin:0; padding:0; overflow-x:hidden; }
-.preview-paper { border:none; box-shadow:none; border-radius:0; margin:0 auto; padding:6mm 5mm; max-width:100%; overflow-x:hidden; }
-.preview-table { min-width:0 !important; width:100%; font-size:0.8rem; }
-.preview-table th, .preview-table td { padding:7px 6px !important; font-size:0.8rem; }
-.preview-table-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
-.invoice-header-row { display:flex !important; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap; }
-.invoice-number-block { text-align:right !important; margin-top:0 !important; flex-shrink:0; }
-.preview-footer { display:block !important; }
-.invoice-from h2 { font-size:1.2rem; }
-.preview-total-row .t-lbl { min-width:120px !important; }
-.preview-total-row .t-val { min-width:80px !important; }
-.qr-code { width:130px !important; height:130px !important; }
-#top-bar { font-family:sans-serif; font-size:13px; padding:10px 12px; background:#4E7A6A; color:#fff; display:flex; align-items:center; justify-content:space-between; gap:8px; position:sticky; top:0; z-index:99; }
-#top-bar button { background:#fff; color:#4E7A6A; border:none; border-radius:8px; padding:8px 12px; font-size:13px; font-weight:700; cursor:pointer; white-space:nowrap; }
-#hint-bar { font-family:sans-serif; font-size:13px; padding:10px 14px; background:#FFF8E8; border-bottom:1px solid #E9D5A8; color:#5A420A; line-height:1.5; }
-@media print { #top-bar, #hint-bar { display:none !important; } .preview-paper { padding:12mm 10mm; } }
+  @page { size: A4; margin: 18mm 15mm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'DM Sans', sans-serif; font-size: 10pt; color: #2C2820; background: #fff; }
+  /* Toolbar (nur auf Bildschirm) */
+  #top-bar { font-family: sans-serif; font-size: 13px; padding: 10px 14px; background: #4E7A6A; color: #fff; display: flex; align-items: center; justify-content: space-between; gap: 10px; position: sticky; top: 0; }
+  #top-bar button { background: #fff; color: #4E7A6A; border: none; border-radius: 8px; padding: 8px 14px; font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+  #hint-bar { font-family: sans-serif; font-size: 12px; padding: 10px 14px; background: #FFF8E8; border-bottom: 1px solid #E9D5A8; color: #5A420A; line-height: 1.5; }
+  /* Papier */
+  .paper { padding: 0 0 10mm; max-width: 180mm; margin: 6mm auto; }
+  /* Briefkopf */
+  .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10mm; gap: 10mm; }
+  .from h1 { font-family: 'Playfair Display', serif; font-size: 18pt; font-weight: 600; margin-bottom: 4mm; }
+  .from p { font-size: 9.5pt; line-height: 1.6; color: #2C2820; }
+  .inv-block { text-align: right; flex-shrink: 0; }
+  .inv-label { font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 700; color: #2C2820; }
+  .inv-num { font-family: 'Playfair Display', serif; font-size: 20pt; color: #2C2820; line-height: 1.2; }
+  .inv-meta { font-size: 9pt; color: #2C2820; line-height: 1.7; margin-top: 2mm; }
+  .inv-total { font-size: 13pt; font-weight: 700; color: #2C2820; margin-top: 3mm; }
+  /* Empfänger */
+  .recipient { background: #F3EEE5; border-radius: 6px; padding: 4mm 5mm; margin-bottom: 7mm; }
+  .recipient h3 { font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 700; margin-bottom: 2mm; }
+  .recipient p { font-size: 9.5pt; line-height: 1.6; }
+  .intro { font-size: 9.5pt; line-height: 1.6; margin-bottom: 6mm; }
+  /* Tabelle */
+  table { width: 100%; border-collapse: collapse; margin-bottom: 5mm; font-size: 9pt; }
+  thead th { background: #EFE8DD; font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.06em; padding: 2.5mm 3mm; text-align: left; font-weight: 700; }
+  thead th:last-child { text-align: right; }
+  tbody td { padding: 2.5mm 3mm; border-bottom: 1px solid #DDD8CE; vertical-align: top; }
+  tbody td:nth-child(2) { white-space: nowrap; text-align: right; }
+  tbody td:last-child { white-space: nowrap; text-align: right; }
+  .surcharge-row { background: #F9F6F1; }
+  .surcharge-row td { font-size: 8.5pt; color: #5C5248; border-bottom: 1px solid #EEE8E0; }
+  .subtotal-row td { border-top: 1.5px solid #DDD8CE; border-bottom: 2px solid #DDD8CE; }
+  .subtotal-row td:last-child { font-weight: 700; }
+  /* Gesamtbetrag */
+  .total-section { display: flex; justify-content: flex-end; margin-bottom: 5mm; }
+  .total-box { border-top: 2px solid #2C2820; padding-top: 3mm; min-width: 70mm; text-align: right; }
+  .total-grand { font-family: 'Playfair Display', serif; font-size: 16pt; color: #2C2820; }
+  /* Steuerhinweis */
+  .tax-note { font-size: 8.5pt; color: #2C2820; margin-bottom: 7mm; }
+  /* Footer */
+  .footer { display: grid; grid-template-columns: 1fr 1fr 44mm; gap: 8mm; border-top: 1px solid #DDD8CE; padding-top: 5mm; }
+  .footer-title { font-weight: 700; font-size: 8pt; margin-bottom: 2mm; }
+  .footer p, .footer div { font-size: 8.5pt; line-height: 1.6; color: #2C2820; }
+  .qr-block { text-align: center; }
+  .qr-img { width: 38mm; height: 38mm; border: 1px solid #C8BFB2; padding: 1.5mm; }
+  .qr-caption { font-size: 7pt; color: #2C2820; margin-top: 1.5mm; line-height: 1.3; }
+  @media print {
+    #top-bar, #hint-bar { display: none !important; }
+    .paper { margin: 0; max-width: 100%; }
+    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
 </style>
 </head><body>
 <div id="top-bar">
   <button onclick="window.close()">← Zurück</button>
-  <span>📄 ${pdfTitle.replace(/_/g,' ')}</span>
+  <span style="font-size:12px">📄 ${pdfTitle.replace(/_/g,' ')}</span>
   <button onclick="window.print()">Drucken / PDF</button>
 </div>
 <div id="hint-bar">${hint}</div>
-${area}
+${_buildPrintHtml(inv)}
 </body></html>`);
   win.document.close();
+}
+
+function _buildPrintHtml(inv) {
+  const s = settings;
+  const bankLines = [s.bankHolder, s.bankName,
+    s.bankIban ? 'IBAN: ' + s.bankIban : '',
+    s.bankBic  ? 'BIC: '  + s.bankBic  : ''
+  ].filter(Boolean);
+  const epcPayload = buildEpcQrPayload(inv, s);
+  const qrUrl = buildQrImageUrl(epcPayload);
+
+  const rows = inv.shifts.map(shift => {
+    const calc = calculateShift(shift);
+    const rate = Number(shift.rate || 0);
+    const sameDay = shift.startDate === shift.endDate;
+    const timeLabel = sameDay
+      ? `${fmtDate(shift.startDate)}, ${shift.startTime}–${shift.endTime}`
+      : `${fmtDate(shift.startDate)} ${shift.startTime} – ${fmtDate(shift.endDate)} ${shift.endTime}`;
+
+    const base = `<tr>
+      <td>
+        <strong>${escapeHtml(shift.description || 'Pflegeeinsatz')}</strong><br>
+        <span style="font-size:8.5pt;color:#5C5248">${timeLabel} · ${eur(rate)}/Std.</span>
+      </td>
+      <td>${minutesToHours(calc.totalMinutes)}</td>
+      <td>${eur(calc.baseAmount)}</td>
+    </tr>`;
+
+    const surcharges = calc.breakdown.map(item => `<tr class="surcharge-row">
+      <td style="padding-left:8mm">↳ ${escapeHtml(item.name)} (${item.percent} %) · ${eur(rate * item.percent / 100)}/Std.</td>
+      <td>${minutesToHours(item.minutes)}</td>
+      <td>${eur(item.amount)}</td>
+    </tr>`).join('');
+
+    const subtotal = calc.breakdown.length ? `<tr class="subtotal-row">
+      <td colspan="2" style="text-align:right;font-size:8.5pt;color:#5C5248">Summe Einsatz</td>
+      <td>${eur(calc.totalAmount)}</td>
+    </tr>` : '';
+
+    return base + surcharges + subtotal;
+  }).join('');
+
+  return `<div class="paper">
+    <div class="header">
+      <div class="from">
+        <h1>${escapeHtml(s.name || '')}</h1>
+        <p>${[s.beruf, s.addr, s.contact, s.steuernr ? 'Steuernr.: ' + s.steuernr : ''].filter(Boolean).map(escapeHtml).join('<br>')}</p>
+      </div>
+      <div class="inv-block">
+        <div class="inv-label">Rechnung</div>
+        <div class="inv-num">${escapeHtml(inv.nr || '–')}</div>
+        <div class="inv-meta">Datum: ${fmtDate(inv.date)}<br>Fällig: ${fmtDate(inv.due)}</div>
+        <div class="inv-total">${eur(inv.total)}</div>
+      </div>
+    </div>
+
+    <div class="recipient">
+      <h3>Rechnungsempfängerin</h3>
+      <p>${escapeHtml(inv.cname || '–')}<br>${escapeHtml(inv.cstreet || '')}<br>${escapeHtml((inv.cplz || '') + ' ' + (inv.ccity || ''))}</p>
+    </div>
+
+    ${inv.intro ? `<p class="intro">${escapeHtml(inv.intro)}</p>` : ''}
+
+    <table>
+      <thead><tr>
+        <th>Leistung / Zeitraum</th>
+        <th style="text-align:right">Std.</th>
+        <th style="text-align:right">Betrag</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+
+    <div class="total-section">
+      <div class="total-box">
+        <div class="total-grand">Gesamtbetrag &nbsp; ${eur(inv.total)}</div>
+      </div>
+    </div>
+
+    <p class="tax-note">${escapeHtml(s.taxNote || defaultSettings.taxNote)}</p>
+
+    <div class="footer">
+      <div>
+        <div class="footer-title">Hinweise</div>
+        <p>${nl2br(escapeHtml(inv.note || 'Bitte überweisen Sie den Rechnungsbetrag ohne Abzug.'))}</p>
+      </div>
+      <div>
+        <div class="footer-title">Bankverbindung</div>
+        <div>${bankLines.map(escapeHtml).join('<br>')}</div>
+      </div>
+      <div class="qr-block">
+        <div class="footer-title">Zahlungs-QR-Code</div>
+        ${qrUrl ? `<img class="qr-img" src="${escapeAttr(qrUrl)}" alt="QR">` : ''}
+        <div class="qr-caption">Zum Scannen in einer Banking-App. Betrag vorbelegt.</div>
+      </div>
+    </div>
+  </div>`;
 }
 
 function renderPreview(inv) {
