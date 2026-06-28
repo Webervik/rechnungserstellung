@@ -467,8 +467,7 @@
   </header>
   <div class="preview-toolbar">
     <button class="btn btn-ghost btn-sm" onclick="backToForm()">← Bearbeiten</button>
-    <button class="btn btn-print" onclick="handleSavePdf(this)">📄 Als PDF speichern</button>
-    <button class="btn btn-ghost btn-sm" onclick="handleEmailPdf(this)">✉ Per E-Mail</button>
+    <button class="btn btn-print" onclick="handleSavePdf(this)">📄 PDF erstellen & verschicken</button>
     <button class="btn btn-primary btn-sm" onclick="saveInvoice();showList()">✓ Speichern</button>
   </div>
   <div style="padding:0 16px" id="preview-area"></div>
@@ -1217,16 +1216,6 @@ function _invoiceTitle(inv) {
   return name ? `${name} ${monat} ${d.getFullYear()}` : `Rechnung ${monat} ${d.getFullYear()}`;
 }
 
-function openMailForInvoice() {
-  const inv = _currentPreviewInv;
-  if (!inv) return;
-  const subject = _invoiceTitle(inv);
-  const d = new Date((inv.date || today()) + 'T00:00:00');
-  const monat = MONTHS_DE[d.getMonth()] + ' ' + d.getFullYear();
-  const body = `Hallo,\n\nanbei meine Rechnung für Sarah Salin für den Monat ${monat}.\n\nMit freundlichen Grüßen\n${(settings.name || '').trim()}`;
-  window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-}
-
 // ── Echte PDF-Erzeugung (jsPDF) + nativer Teilen-Dialog ──────────────────────
 // Vermeidet den umständlichen Weg über den Browser-Druckdialog: die PDF wird
 // direkt im Browser erzeugt und über das native Teilen-Menü (E-Mail, WhatsApp,
@@ -1410,46 +1399,25 @@ async function handleSavePdf(btn) {
   if (!blob) return;
 
   const file = new File([blob], fileName, { type: 'application/pdf' });
-  if (navigator.canShare && navigator.canShare({ files: [file] })) {
-    try { await navigator.share({ files: [file], title: fileName }); return; }
-    catch (e) { if (e.name === 'AbortError') return; }
+
+  // Nativer Teilen-Dialog (E-Mail, WhatsApp, Dateien …) – ein Tap, Anhang ist dabei.
+  // Manche Browser melden canShare falsch, daher direkt versuchen statt nur zu prüfen.
+  if (navigator.share) {
+    try {
+      await navigator.share({ files: [file], title: fileName });
+      return;
+    } catch (e) {
+      if (e.name === 'AbortError') return; // Nutzerin hat abgebrochen
+      // sonst: weiter zum Download-Fallback
+    }
   }
+
+  // Fallback: PDF direkt herunterladen (kein Teilen mit Datei möglich)
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url; a.download = fileName; a.click();
   URL.revokeObjectURL(url);
-}
-
-async function handleEmailPdf(btn) {
-  const inv = _currentPreviewInv;
-  if (!inv) return;
-  const original = btn ? btn.textContent : null;
-  if (btn) { btn.textContent = '⏳ Erstelle PDF…'; btn.disabled = true; }
-  const fileName = _invoiceTitle(inv).replace(/\s+/g, '_') + '.pdf';
-  const blob = await _generatePdfOrFallback(inv);
-  if (btn) { btn.textContent = original; btn.disabled = false; }
-  if (!blob) return;
-
-  const file = new File([blob], fileName, { type: 'application/pdf' });
-  if (navigator.canShare && navigator.canShare({ files: [file] })) {
-    try { await navigator.share({ files: [file], title: fileName }); return; }
-    catch (e) { if (e.name === 'AbortError') return; }
-  }
-
-  // Web Share mit Datei nicht verfügbar (meist Desktop):
-  // PDF herunterladen + Mail-App mit Betreff/Text öffnen, Anhang manuell hinzufügen
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = fileName; a.click();
-  URL.revokeObjectURL(url);
-
-  const subject = _invoiceTitle(inv);
-  const d = new Date((inv.date || today()) + 'T00:00:00');
-  const monat = MONTHS_DE[d.getMonth()] + ' ' + d.getFullYear();
-  const body = `Hallo,\n\nanbei meine Rechnung für Sarah Salin für den Monat ${monat}.\n\nBitte die heruntergeladene PDF-Datei als Anhang hinzufügen.\n\nMit freundlichen Grüßen\n${(settings.name || '').trim()}`;
-  setTimeout(() => {
-    window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-  }, 600);
+  alert(`Die PDF wurde im Download-Ordner gespeichert ("${fileName}").\n\nÖffne deine E-Mail- oder WhatsApp-App und füge sie dort als Anhang hinzu.`);
 }
 
 function doPrint() {
