@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>PflegeRechnung Pro</title>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600&family=DM+Sans:wght@300;400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
   :root {
     --sand: #F5F0E8;
@@ -466,8 +467,8 @@
   </header>
   <div class="preview-toolbar">
     <button class="btn btn-ghost btn-sm" onclick="backToForm()">← Bearbeiten</button>
-    <button class="btn btn-print" onclick="doPrint()">📄 Als PDF speichern</button>
-    <button class="btn btn-ghost btn-sm" onclick="openMailForInvoice()" title="Öffnet Mail-App mit Betreff – PDF vorher speichern und manuell anhängen">✉ Per E-Mail</button>
+    <button class="btn btn-print" onclick="handleSavePdf(this)">📄 Als PDF speichern</button>
+    <button class="btn btn-ghost btn-sm" onclick="handleEmailPdf(this)">✉ Per E-Mail</button>
     <button class="btn btn-primary btn-sm" onclick="saveInvoice();showList()">✓ Speichern</button>
   </div>
   <div style="padding:0 16px" id="preview-area"></div>
@@ -877,7 +878,7 @@ function previewAndPrint(id) {
   _currentPreviewInv = inv;
   renderPreview(inv);
   showView('preview');
-  setTimeout(doPrint, 400);
+  setTimeout(() => handleSavePdf(null), 300);
 }
 
 function renderList() {
@@ -1224,6 +1225,231 @@ function openMailForInvoice() {
   const monat = MONTHS_DE[d.getMonth()] + ' ' + d.getFullYear();
   const body = `Hallo,\n\nanbei meine Rechnung für Sarah Salin für den Monat ${monat}.\n\nMit freundlichen Grüßen\n${(settings.name || '').trim()}`;
   window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
+// ── Echte PDF-Erzeugung (jsPDF) + nativer Teilen-Dialog ──────────────────────
+// Vermeidet den umständlichen Weg über den Browser-Druckdialog: die PDF wird
+// direkt im Browser erzeugt und über das native Teilen-Menü (E-Mail, WhatsApp,
+// Dateien …) mit Anhang weitergegeben.
+
+async function fetchImageAsDataUrl(url) {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    return await new Promise(resolve => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  } catch { return null; }
+}
+
+async function buildInvoicePdfBlob(inv) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const s = settings;
+  const pageW = 210, marginX = 15, rightX = pageW - marginX;
+  let y = 20;
+
+  doc.setTextColor(44, 40, 32);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(15);
+  doc.text(String(s.name || ''), marginX, y); y += 6;
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
+  [s.beruf, s.addr, s.contact, s.steuernr ? 'Steuernr.: ' + s.steuernr : ''].filter(Boolean).forEach(line => {
+    doc.text(String(line), marginX, y); y += 4.6;
+  });
+
+  let ry = 20;
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(8);
+  doc.text('RECHNUNG', rightX, ry, { align: 'right' }); ry += 6;
+  doc.setFontSize(17);
+  doc.text(String(inv.nr || ''), rightX, ry, { align: 'right' }); ry += 6;
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
+  doc.text('Datum: ' + fmtDate(inv.date), rightX, ry, { align: 'right' }); ry += 4.8;
+  doc.text('Fällig: ' + fmtDate(inv.due), rightX, ry, { align: 'right' }); ry += 7;
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(13);
+  doc.text(eur(inv.total), rightX, ry, { align: 'right' });
+
+  y = Math.max(y, ry) + 8;
+
+  doc.setFillColor(243, 238, 229);
+  doc.rect(marginX, y, pageW - 2 * marginX, 22, 'F');
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5);
+  doc.text('RECHNUNGSEMPFÄNGERIN', marginX + 4, y + 6);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
+  doc.text(String(inv.cname || ''), marginX + 4, y + 12);
+  doc.text(String(inv.cstreet || ''), marginX + 4, y + 17);
+  doc.text(`${inv.cplz || ''} ${inv.ccity || ''}`.trim(), marginX + 4, y + 22);
+  y += 30;
+
+  if (inv.intro) {
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
+    const introLines = doc.splitTextToSize(inv.intro, pageW - 2 * marginX);
+    doc.text(introLines, marginX, y); y += introLines.length * 4.6 + 4;
+  }
+
+  function ensureSpace(h) {
+    if (y + h > 275) { doc.addPage(); y = 20; }
+  }
+
+  doc.setFillColor(239, 232, 221);
+  doc.rect(marginX, y, pageW - 2 * marginX, 7, 'F');
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5);
+  doc.text('LEISTUNG / ZEITRAUM', marginX + 2, y + 4.8);
+  doc.text('STD.', rightX - 28, y + 4.8, { align: 'right' });
+  doc.text('BETRAG', rightX - 2, y + 4.8, { align: 'right' });
+  y += 10;
+
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
+  inv.shifts.forEach(shift => {
+    const calc = calculateShift(shift);
+    const rate = Number(shift.rate || 0);
+    const sameDay = shift.startDate === shift.endDate;
+    const timeLabel = sameDay
+      ? `${fmtDate(shift.startDate)}, ${shift.startTime}–${shift.endTime}`
+      : `${fmtDate(shift.startDate)} ${shift.startTime} – ${fmtDate(shift.endDate)} ${shift.endTime}`;
+
+    ensureSpace(14);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5);
+    const descLines = doc.splitTextToSize(shift.description || 'Pflegeeinsatz', 110);
+    doc.text(descLines, marginX, y + 4);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
+    doc.text(`${timeLabel} · ${eur(rate)}/Std.`, marginX, y + 4 + descLines.length * 4);
+    doc.setFontSize(9.5);
+    doc.text(minutesToHours(calc.totalMinutes), rightX - 28, y + 4, { align: 'right' });
+    doc.text(eur(calc.baseAmount), rightX - 2, y + 4, { align: 'right' });
+    y += Math.max(10, 4 + descLines.length * 4 + 5);
+
+    calc.breakdown.forEach(item => {
+      ensureSpace(7);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8.3); doc.setTextColor(92, 82, 72);
+      doc.text(`↳ ${item.name} (${item.percent} %) · ${eur(rate * item.percent / 100)}/Std.`, marginX + 4, y + 3.5);
+      doc.text(minutesToHours(item.minutes), rightX - 28, y + 3.5, { align: 'right' });
+      doc.text(eur(item.amount), rightX - 2, y + 3.5, { align: 'right' });
+      doc.setTextColor(44, 40, 32);
+      y += 6;
+    });
+
+    if (calc.breakdown.length) {
+      ensureSpace(7);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(8.3);
+      doc.text('Summe Einsatz', rightX - 28, y + 3.5, { align: 'right' });
+      doc.text(eur(calc.totalAmount), rightX - 2, y + 3.5, { align: 'right' });
+      y += 7;
+    }
+    doc.setDrawColor(221, 216, 206);
+    doc.line(marginX, y, rightX, y);
+    y += 4;
+  });
+
+  ensureSpace(16);
+  y += 2;
+  doc.setDrawColor(44, 40, 32); doc.setLineWidth(0.6);
+  doc.line(rightX - 75, y, rightX, y);
+  y += 7;
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(15);
+  doc.text(`Gesamtbetrag  ${eur(inv.total)}`, rightX, y, { align: 'right' });
+  y += 10;
+
+  ensureSpace(10);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
+  const taxLines = doc.splitTextToSize(s.taxNote || defaultSettings.taxNote, pageW - 2 * marginX);
+  doc.text(taxLines, marginX, y); y += taxLines.length * 4 + 6;
+
+  ensureSpace(40);
+  doc.setDrawColor(221, 216, 206); doc.setLineWidth(0.2);
+  doc.line(marginX, y, rightX, y); y += 6;
+  const colW = (pageW - 2 * marginX - 16) / 3;
+  const col1X = marginX, col2X = marginX + colW + 8, col3X = marginX + 2 * (colW + 8);
+  const footerTop = y;
+
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5);
+  doc.text('HINWEISE', col1X, footerTop);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8.3);
+  const noteLines = doc.splitTextToSize(inv.note || 'Bitte überweisen Sie den Rechnungsbetrag ohne Abzug.', colW);
+  doc.text(noteLines, col1X, footerTop + 5);
+
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5);
+  doc.text('BANKVERBINDUNG', col2X, footerTop);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8.3);
+  const bankLines = [s.bankHolder, s.bankName, s.bankIban ? 'IBAN: ' + s.bankIban : '', s.bankBic ? 'BIC: ' + s.bankBic : ''].filter(Boolean);
+  doc.text(bankLines, col2X, footerTop + 5);
+
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5);
+  doc.text('ZAHLUNGS-QR-CODE', col3X, footerTop);
+  const epcPayload = buildEpcQrPayload(inv, s);
+  if (epcPayload) {
+    const qrDataUrl = await fetchImageAsDataUrl(buildQrImageUrl(epcPayload));
+    if (qrDataUrl) doc.addImage(qrDataUrl, 'PNG', col3X, footerTop + 4, 30, 30);
+  }
+
+  return doc.output('blob');
+}
+
+async function _generatePdfOrFallback(inv) {
+  if (!window.jspdf) { doPrint(); return null; }
+  try {
+    return await buildInvoicePdfBlob(inv);
+  } catch (e) {
+    console.error('PDF-Erzeugung fehlgeschlagen:', e);
+    doPrint();
+    return null;
+  }
+}
+
+async function handleSavePdf(btn) {
+  const inv = _currentPreviewInv;
+  if (!inv) return;
+  const original = btn ? btn.textContent : null;
+  if (btn) { btn.textContent = '⏳ Erstelle PDF…'; btn.disabled = true; }
+  const fileName = _invoiceTitle(inv).replace(/\s+/g, '_') + '.pdf';
+  const blob = await _generatePdfOrFallback(inv);
+  if (btn) { btn.textContent = original; btn.disabled = false; }
+  if (!blob) return;
+
+  const file = new File([blob], fileName, { type: 'application/pdf' });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: fileName }); return; }
+    catch (e) { if (e.name === 'AbortError') return; }
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = fileName; a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function handleEmailPdf(btn) {
+  const inv = _currentPreviewInv;
+  if (!inv) return;
+  const original = btn ? btn.textContent : null;
+  if (btn) { btn.textContent = '⏳ Erstelle PDF…'; btn.disabled = true; }
+  const fileName = _invoiceTitle(inv).replace(/\s+/g, '_') + '.pdf';
+  const blob = await _generatePdfOrFallback(inv);
+  if (btn) { btn.textContent = original; btn.disabled = false; }
+  if (!blob) return;
+
+  const file = new File([blob], fileName, { type: 'application/pdf' });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: fileName }); return; }
+    catch (e) { if (e.name === 'AbortError') return; }
+  }
+
+  // Web Share mit Datei nicht verfügbar (meist Desktop):
+  // PDF herunterladen + Mail-App mit Betreff/Text öffnen, Anhang manuell hinzufügen
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = fileName; a.click();
+  URL.revokeObjectURL(url);
+
+  const subject = _invoiceTitle(inv);
+  const d = new Date((inv.date || today()) + 'T00:00:00');
+  const monat = MONTHS_DE[d.getMonth()] + ' ' + d.getFullYear();
+  const body = `Hallo,\n\nanbei meine Rechnung für Sarah Salin für den Monat ${monat}.\n\nBitte die heruntergeladene PDF-Datei als Anhang hinzufügen.\n\nMit freundlichen Grüßen\n${(settings.name || '').trim()}`;
+  setTimeout(() => {
+    window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  }, 600);
 }
 
 function doPrint() {
