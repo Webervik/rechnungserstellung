@@ -647,6 +647,12 @@ function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
 }
 
+// Auf dem Desktop (auch macOS Safari) hat der native Teilen-Dialog keine
+// "Auf der Festplatte sichern"-Option – dort direkt herunterladen statt teilen.
+function isMobileDevice() {
+  return /iPad|iPhone|iPod|Android/i.test(navigator.userAgent) && !window.MSStream;
+}
+
 function loadInvoices() {
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY_INVOICES) || '[]'); }
   catch { return []; }
@@ -1506,9 +1512,10 @@ async function handleSavePdf(btn) {
 
   const file = new File([blob], fileName, { type: 'application/pdf' });
 
-  // Nativer Teilen-Dialog (E-Mail, WhatsApp, Dateien …) – ein Tap, Anhang ist dabei.
-  // Manche Browser melden canShare falsch, daher direkt versuchen statt nur zu prüfen.
-  if (navigator.share) {
+  // Nativer Teilen-Dialog nur auf dem Handy (E-Mail, WhatsApp, Dateien …) – ein Tap, Anhang ist dabei.
+  // Auf dem Desktop/Mac fehlt dort die Möglichkeit, direkt auf der Festplatte zu speichern,
+  // deshalb dort immer direkt herunterladen.
+  if (isMobileDevice() && navigator.share) {
     try {
       await navigator.share({ files: [file], title: fileName });
       return;
@@ -2098,8 +2105,9 @@ async function showBackupModal(mode) {
     };
     const data = JSON.stringify(payload, null, 2);
     const file = new File([data], fileName, { type: 'application/json' });
-    // iOS / Android: nativer Teilen-Dialog (E-Mail, Dateien, AirDrop …)
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    // Nur auf dem Handy den Teilen-Dialog nutzen (E-Mail, Dateien, AirDrop …) –
+    // auf dem Desktop/Mac fehlt dort die Möglichkeit, direkt auf der Festplatte zu speichern.
+    if (isMobileDevice() && navigator.canShare && navigator.canShare({ files: [file] })) {
       try {
         await navigator.share({ files: [file], title: 'PflegeRechnung Datensicherung' });
         _markBackupDone();
