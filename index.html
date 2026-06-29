@@ -63,6 +63,11 @@
   .btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
   .list-header { padding: 32px 28px 20px; display:flex; align-items:flex-end; justify-content:space-between; gap:16px; }
+  .backup-reminder {
+    align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;
+    background:#FFF8E8; border:1px solid #E9D5A8; color:#5A420A;
+    padding:12px 16px; margin:20px 28px 0; border-radius:12px; font-size:0.86rem;
+  }
   .list-title { font-family: 'Playfair Display', serif; font-size: 2rem; font-weight: 500; }
   .list-subtitle { color: var(--ink-faint); font-size: 0.87rem; margin-top: 4px; }
   .invoice-list { padding: 0 28px 40px; display: flex; flex-direction: column; gap: 12px; }
@@ -210,6 +215,7 @@
   @media (max-width: 820px) {
     .app-header, .list-header, .invoice-list, .form-container, .preview-toolbar { padding-left:16px; padding-right:16px; }
     .form-actions { padding-left:16px; padding-right:16px; }
+    .backup-reminder { margin-left:16px; margin-right:16px; }
     .invoice-card { align-items:flex-start; gap:14px; }
     .result-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
     .preview-paper { margin: 20px 8px 50px; padding: 20px 14px; }
@@ -331,6 +337,7 @@
       <button class="btn btn-primary" onclick="newInvoice()">+ Neue Rechnung</button>
     </div>
   </header>
+  <div id="backup-reminder-banner" class="backup-reminder" style="display:none"></div>
   <div class="list-header">
     <div>
       <div class="list-title">Rechnungen</div>
@@ -584,16 +591,19 @@
       <div id="clients-container"></div>
     </div>
 
-    <div style="border-top:1px solid var(--border);padding-top:16px;margin-top:4px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between">
-      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-        <span style="font-size:0.8rem;color:var(--ink-faint);font-weight:600;text-transform:uppercase;letter-spacing:0.06em">Datensicherung</span>
-        <button class="btn btn-ghost btn-sm" onclick="showBackupModal('export')">⬇ Alles sichern</button>
-        <button class="btn btn-ghost btn-sm" onclick="showBackupModal('import')">⬆ Sicherung wiederherstellen</button>
+    <div style="border-top:1px solid var(--border);padding-top:16px;margin-top:4px">
+      <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+          <span style="font-size:0.8rem;color:var(--ink-faint);font-weight:600;text-transform:uppercase;letter-spacing:0.06em">Datensicherung</span>
+          <button class="btn btn-ghost btn-sm" onclick="showBackupModal('export')">⬇ Alles sichern</button>
+          <button class="btn btn-ghost btn-sm" onclick="showBackupModal('import')">⬆ Sicherung wiederherstellen</button>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-ghost" onclick="closeSettings()">Abbrechen</button>
+          <button class="btn btn-primary" onclick="saveSettings()">Speichern</button>
+        </div>
       </div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap">
-        <button class="btn btn-ghost" onclick="closeSettings()">Abbrechen</button>
-        <button class="btn btn-primary" onclick="saveSettings()">Speichern</button>
-      </div>
+      <div class="hint" id="s-last-backup" style="margin-top:8px"></div>
     </div>
   </div>
 </div>
@@ -624,7 +634,8 @@ const defaultSettings = {
   bankBic: '',
   clients: [],
   dispoClientId: '',
-  pin: ''
+  pin: '',
+  lastBackupAt: ''
 };
 
 let invoices = loadInvoices();
@@ -754,7 +765,7 @@ function showView(id) {
   document.getElementById('view-' + id).classList.add('active');
   window.scrollTo(0, 0);
 }
-function showList() { renderList(); showView('list'); }
+function showList() { renderList(); checkBackupReminder(); showView('list'); }
 function backToForm() { showView('form'); }
 
 function weekdayLabel(n) {
@@ -1882,6 +1893,7 @@ function openSettings() {
   document.getElementById('s-pin').value = settings.pin || '';
   renderClients();
   renderDispoClientSelect();
+  renderLastBackupHint();
   document.getElementById('settings-modal').classList.add('open');
 }
 
@@ -2014,6 +2026,64 @@ function saveSettings() {
 }
 
 const BACKUP_VERSION = 'pflegrechnung-backup-v1';
+const BACKUP_REMINDER_DAYS = 30;
+
+function _markBackupDone() {
+  settings.lastBackupAt = new Date().toISOString();
+  localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
+  hideBackupReminder();
+  renderLastBackupHint();
+}
+
+function renderLastBackupHint() {
+  const el = document.getElementById('s-last-backup');
+  if (!el) return;
+  if (!settings.lastBackupAt) {
+    el.textContent = 'Noch nie gesichert.';
+    return;
+  }
+  const d = new Date(settings.lastBackupAt);
+  const dateStr = d.toLocaleDateString('de-DE') + ' um ' + d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  el.textContent = `Zuletzt gesichert: ${dateStr}`;
+}
+
+function _daysSince(isoString) {
+  if (!isoString) return Infinity;
+  const diffMs = Date.now() - new Date(isoString).getTime();
+  return diffMs / (1000 * 60 * 60 * 24);
+}
+
+function hideBackupReminder() {
+  const banner = document.getElementById('backup-reminder-banner');
+  if (banner) banner.style.display = 'none';
+}
+
+function dismissBackupReminder() {
+  // Erinnerung für diese Browsersitzung ausblenden, ohne lastBackupAt zu setzen
+  sessionStorage.setItem('pflegepro_backup_reminder_dismissed', '1');
+  hideBackupReminder();
+}
+
+function checkBackupReminder() {
+  const banner = document.getElementById('backup-reminder-banner');
+  if (!banner) return;
+  if (sessionStorage.getItem('pflegepro_backup_reminder_dismissed') === '1') { banner.style.display = 'none'; return; }
+  if (!invoices.length) { banner.style.display = 'none'; return; } // ohne Rechnungen nichts zu sichern
+
+  const days = _daysSince(settings.lastBackupAt);
+  if (days < BACKUP_REMINDER_DAYS) { banner.style.display = 'none'; return; }
+
+  const msg = settings.lastBackupAt
+    ? `Letzte Sicherung vor ${Math.floor(days)} Tagen.`
+    : 'Noch nie eine Datensicherung erstellt.';
+  banner.style.display = 'flex';
+  banner.innerHTML = `
+    <span>💾 ${msg} Falls dein Browser-Speicher gelöscht wird, gehen sonst alle Rechnungen verloren.</span>
+    <span style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-primary btn-sm" onclick="showBackupModal('export')">Jetzt sichern</button>
+      <button class="btn btn-ghost btn-sm" onclick="dismissBackupReminder()">Später</button>
+    </span>`;
+}
 
 async function showBackupModal(mode) {
   if (mode === 'export') {
@@ -2030,7 +2100,11 @@ async function showBackupModal(mode) {
     const file = new File([data], fileName, { type: 'application/json' });
     // iOS / Android: nativer Teilen-Dialog (E-Mail, Dateien, AirDrop …)
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      try { await navigator.share({ files: [file], title: 'PflegeRechnung Datensicherung' }); return; }
+      try {
+        await navigator.share({ files: [file], title: 'PflegeRechnung Datensicherung' });
+        _markBackupDone();
+        return;
+      }
       catch(e) { if (e.name === 'AbortError') return; }
     }
     // Desktop-Fallback: Datei herunterladen
@@ -2038,6 +2112,7 @@ async function showBackupModal(mode) {
     const a = document.createElement('a');
     a.href = url; a.download = fileName; a.click();
     URL.revokeObjectURL(url);
+    _markBackupDone();
     return;
   }
 
@@ -2088,6 +2163,7 @@ function restoreFromFile(input) {
       document.getElementById('backup-modal').remove();
       openSettings();
       renderList();
+      checkBackupReminder();
       alert(isFullBackup
         ? `Daten erfolgreich wiederhergestellt: Einstellungen + ${invoices.length} Rechnung${invoices.length !== 1 ? 'en' : ''}.`
         : 'Einstellungen wiederhergestellt (diese Sicherungsdatei enthielt keine Rechnungen).');
@@ -2141,6 +2217,7 @@ function _initPinScreen() {
 _initPinScreen();
 
 renderList();
+checkBackupReminder();
 
 // ── Monatsrad ────────────────────────────────────────────────────────────────
 const MONTHS_DE = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
