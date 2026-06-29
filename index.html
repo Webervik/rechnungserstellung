@@ -383,7 +383,22 @@
     </div>
 
     <div class="form-section">
-      <div class="section-title">Empfänger / Patient</div>
+      <div class="section-title" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+        <span>Empfänger / Patient</span>
+        <div class="hint">Patientendaten und Konditionen können gespeichert und wiederverwendet werden.</div>
+      </div>
+      <div class="form-row" style="margin-bottom:14px">
+        <div class="form-group" style="flex:2">
+          <label>Patientin / Patient</label>
+          <select id="f-client-select" onchange="applySelectedClient(this.value)">
+            <option value="">— Bitte wählen —</option>
+          </select>
+        </div>
+        <div class="form-group" style="flex:1;min-width:220px;justify-content:flex-end">
+          <label>&nbsp;</label>
+          <button class="btn btn-ghost" type="button" onclick="saveCurrentAsClient()">Aktuelle Daten speichern</button>
+        </div>
+      </div>
       <div class="form-row" style="margin-bottom:14px">
         <div class="form-group" style="flex:2">
           <label>Name</label>
@@ -410,7 +425,7 @@
       <div class="section-title" style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap">
         <span>Pflegeeinsätze</span>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="btn btn-ghost btn-sm" onclick="showDispoModal()">📅 Aus Dienstplan laden</button>
+          <button class="btn btn-ghost btn-sm" id="btn-dispo-import" onclick="showDispoModal()">📅 Aus Dienstplan laden</button>
           <button class="btn btn-ghost btn-sm" onclick="addShift()">+ Einsatz hinzufügen</button>
         </div>
       </div>
@@ -551,6 +566,24 @@
       </div>
     </div>
 
+    <div class="form-section" style="margin-bottom:16px">
+      <div class="section-title" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+        <span>Patientinnen &amp; Patienten</span>
+        <button class="btn btn-ghost btn-sm" onclick="addClientProfile()">+ Patientin/Patient hinzufügen</button>
+      </div>
+      <div class="hint" style="margin-bottom:12px">Hier können Name, Adresse, Stundensatz und Zahlungsziel pro Patientin/Patient hinterlegt werden. Im Rechnungsformular per Dropdown auswählbar.</div>
+      <div class="form-row" style="margin-bottom:14px">
+        <div class="form-group" style="flex:2">
+          <label>Dienstplan-Import gilt für</label>
+          <select id="s-dispo-client">
+            <option value="">— Keine / immer anzeigen —</option>
+          </select>
+          <div class="hint">Der „Aus Dienstplan laden"-Button erscheint im Formular nur, wenn diese Patientin/dieser Patient ausgewählt ist.</div>
+        </div>
+      </div>
+      <div id="clients-container"></div>
+    </div>
+
     <div style="border-top:1px solid var(--border);padding-top:16px;margin-top:4px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between">
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
         <span style="font-size:0.8rem;color:var(--ink-faint);font-weight:600;text-transform:uppercase;letter-spacing:0.06em">Datensicherung</span>
@@ -590,6 +623,7 @@ const defaultSettings = {
   bankIban: '',
   bankBic: '',
   clients: [],
+  dispoClientId: '',
   pin: ''
 };
 
@@ -625,11 +659,32 @@ function normalizeClients(clients) {
 function loadSettings() {
   try {
     const raw = JSON.parse(localStorage.getItem(STORAGE_KEY_SETTINGS) || '{}');
-    return {
+    const s = {
       ...structuredClone(defaultSettings),
       ...raw,
       clients: normalizeClients(raw.clients)
     };
+    // Migration: bisher war die App auf eine einzige Patientin (Sarah Salin) fest
+    // eingestellt. Damit bestehende Nutzerinnen keine Daten verlieren und ohne
+    // Unterbrechung weiterarbeiten können, wird beim ersten Laden automatisch
+    // ein entsprechendes Patientenprofil angelegt.
+    if (!s.clients.length) {
+      const legacy = {
+        id: uid(),
+        name: 'Sarah Salin',
+        street: 'Meraner Str. 18a',
+        plz: '10825',
+        city: 'Berlin',
+        defaultRate: Number(s.defaultRate || defaultSettings.defaultRate || 0),
+        paymentDays: Number(s.paymentDays || defaultSettings.paymentDays || 30),
+        intro: 'Abrechnung der erbrachten Pflegeleistungen.',
+        note: 'Bitte überweisen Sie den Betrag ohne Abzug auf das unten genannte Konto.'
+      };
+      s.clients = [legacy];
+      if (!s.dispoClientId) s.dispoClientId = legacy.id;
+      localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(s));
+    }
+    return s;
   } catch {
     return structuredClone(defaultSettings);
   }
@@ -653,9 +708,10 @@ function addDays(isoDate, days) {
   return localISO(dt);
 }
 
-// Fälligkeit: 30 Tage nach Monatsende des Leistungsmonats,
-// außer die Rechnung wird nach dem 7. des Folgemonats eingereicht → dann Rechnungsdatum + 30 Tage.
-function calcDueDate(invoiceDateStr, shiftsArr) {
+// Fälligkeit: [paymentDays] Tage nach Monatsende des Leistungsmonats (Standard 30),
+// außer die Rechnung wird nach dem 7. des Folgemonats eingereicht → dann Rechnungsdatum + [paymentDays] Tage.
+function calcDueDate(invoiceDateStr, shiftsArr, paymentDays) {
+  const days = Number(paymentDays || 30);
   const invoiceDate = new Date((invoiceDateStr || today()) + 'T00:00:00');
   // Leistungsmonat = Monat des spätesten Einsatzendes (oder Rechnungsmonat als Fallback)
   const shiftDates = (shiftsArr || []).map(s => s.endDate || s.startDate).filter(Boolean).sort();
@@ -669,12 +725,12 @@ function calcDueDate(invoiceDateStr, shiftsArr) {
   // 7. des Folgemonats nach dem Leistungsmonat
   const cutoff = new Date(svcYear, svcMonth + 1, 7);
   if (invoiceDate > cutoff) {
-    // Zu spät eingereicht → Rechnungsdatum + 30 Tage
-    return addDays(invoiceDateStr || today(), 30);
+    // Zu spät eingereicht → Rechnungsdatum + [days] Tage
+    return addDays(invoiceDateStr || today(), days);
   } else {
-    // Monatsende des Leistungsmonats + 30 Tage
+    // Monatsende des Leistungsmonats + [days] Tage
     const endOfMonth = new Date(svcYear, svcMonth + 1, 0);
-    return addDays(localISO(endOfMonth), 30);
+    return addDays(localISO(endOfMonth), days);
   }
 }
 function fmtDate(s) {
@@ -721,10 +777,34 @@ function createShift() {
     startTime: '',
     endDate: '',
     endTime: '',
-    rate: Number(settings.defaultRate || 0),
+    rate: getCurrentClientRate(),
     holiday: false,
     notes: ''
   };
+}
+
+// Liefert den/die aktuell im Formular ausgewählte Patientin/Patient (oder null)
+function getCurrentClient() {
+  const select = document.getElementById('f-client-select');
+  const clientId = select ? select.value : '';
+  return (settings.clients || []).find(c => c.id === clientId) || null;
+}
+function getCurrentClientRate() {
+  const client = getCurrentClient();
+  return Number((client && client.defaultRate) || settings.defaultRate || 0);
+}
+function getCurrentClientPaymentDays() {
+  const client = getCurrentClient();
+  return Number((client && client.paymentDays) || settings.paymentDays || 30);
+}
+// Blendet den Dienstplan-Import-Button nur für die dafür hinterlegte Patientin ein
+function updateDispoButtonVisibility() {
+  const btn = document.getElementById('btn-dispo-import');
+  if (!btn) return;
+  const select = document.getElementById('f-client-select');
+  const clientId = select ? select.value : '';
+  const show = !settings.dispoClientId || clientId === settings.dispoClientId;
+  btn.style.display = show ? 'inline-flex' : 'none';
 }
 
 function renderClientSelect(selectedId = '') {
@@ -744,26 +824,27 @@ function applyClientToForm(client, preserveSelection = false) {
   document.getElementById('f-ccity').value = client.city || '';
   if (client.intro) document.getElementById('f-intro').value = client.intro;
   if (client.note) document.getElementById('f-note').value = client.note;
-  const days = Number(client.paymentDays || settings.paymentDays || 14);
+  if (!preserveSelection) document.getElementById('f-client-select').value = client.id || '';
+  const days = Number(client.paymentDays || settings.paymentDays || 30);
   if (document.getElementById('f-date').value) {
-    document.getElementById('f-due').value = addDays(document.getElementById('f-date').value, days);
+    document.getElementById('f-due').value = calcDueDate(document.getElementById('f-date').value, shifts, days);
   }
   if (client.defaultRate) {
     shifts = shifts.map(shift => ({ ...shift, rate: Number(client.defaultRate) }));
     renderShifts();
   }
-  if (!preserveSelection) document.getElementById('f-client-select').value = client.id || '';
+  updateDispoButtonVisibility();
 }
 
 function applySelectedClient(clientId) {
   const client = (settings.clients || []).find(c => c.id === clientId);
-  if (!client) return;
-  applyClientToForm(client, true);
+  if (client) applyClientToForm(client, true);
+  updateDispoButtonVisibility();
 }
 
 function getFormClientData() {
   const issueDate = document.getElementById('f-date').value || today();
-  const dueDate = document.getElementById('f-due').value || addDays(issueDate, settings.paymentDays || 14);
+  const dueDate = document.getElementById('f-due').value || addDays(issueDate, settings.paymentDays || 30);
   const diff = Math.round((new Date(dueDate + 'T00:00:00') - new Date(issueDate + 'T00:00:00')) / 86400000);
   return {
     name: document.getElementById('f-cname').value.trim(),
@@ -771,7 +852,7 @@ function getFormClientData() {
     plz: document.getElementById('f-cplz').value.trim(),
     city: document.getElementById('f-ccity').value.trim(),
     defaultRate: shifts.length ? Number(shifts[0].rate || settings.defaultRate || 0) : Number(settings.defaultRate || 0),
-    paymentDays: diff > 0 ? diff : Number(settings.paymentDays || 14),
+    paymentDays: diff > 0 ? diff : Number(settings.paymentDays || 30),
     intro: document.getElementById('f-intro').value,
     note: document.getElementById('f-note').value
   };
@@ -780,7 +861,7 @@ function getFormClientData() {
 function saveCurrentAsClient() {
   const data = getFormClientData();
   if (!data.name) {
-    alert('Bitte zuerst wenigstens einen Kundennamen eintragen.');
+    alert('Bitte zuerst wenigstens einen Namen eintragen.');
     return;
   }
   const select = document.getElementById('f-client-select');
@@ -796,7 +877,7 @@ function saveCurrentAsClient() {
   localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify({ ...settings, clients: settings.clients }));
   settings = loadSettings();
   renderClientSelect(clientId);
-  alert(existingId ? 'Kundendaten aktualisiert.' : 'Kunde gespeichert.');
+  alert(existingId ? 'Daten aktualisiert.' : 'Patientin/Patient gespeichert.');
 }
 
 function newInvoice() {
@@ -805,19 +886,29 @@ function newInvoice() {
     _dispoPreselectedMonth = `${year}-${String(month+1).padStart(2,'0')}`;
     const invoiceDate = today(); // Rechnungsdatum = heute
     currentId = null;
-    shifts = [createShift()];
     document.getElementById('f-nr').value = nextNr();
     document.getElementById('f-date').value = invoiceDate;
-    document.getElementById('f-due').value = calcDueDate(invoiceDate, shifts);
-    document.getElementById('f-cname').value = 'Sarah Salin';
-    document.getElementById('f-cstreet').value = 'Meraner Str. 18a';
-    document.getElementById('f-cplz').value = '10825';
-    document.getElementById('f-ccity').value = 'Berlin';
-    renderClientSelect('');
     document.getElementById('f-intro').value = 'Abrechnung der erbrachten Pflegeleistungen.';
     document.getElementById('f-note').value = 'Bitte überweisen Sie den Betrag ohne Abzug auf das unten genannte Konto.';
     document.getElementById('form-title').textContent = 'Neue Rechnung';
     document.getElementById('btn-delete').style.display = 'none';
+
+    // Patientin vorauswählen: gibt es nur eine, automatisch übernehmen (bisheriges Verhalten);
+    // bei mehreren Patientinnen ebenfalls die erste vorschlagen, einfach umwählbar.
+    const clients = settings.clients || [];
+    const defaultClient = clients[0] || null;
+    shifts = [createShift()];
+    renderClientSelect(defaultClient ? defaultClient.id : '');
+    if (defaultClient) {
+      applyClientToForm(defaultClient, true);
+    } else {
+      document.getElementById('f-cname').value = '';
+      document.getElementById('f-cstreet').value = '';
+      document.getElementById('f-cplz').value = '';
+      document.getElementById('f-ccity').value = '';
+      document.getElementById('f-due').value = calcDueDate(invoiceDate, shifts);
+    }
+    updateDispoButtonVisibility();
     renderShifts();
     showView('form');
   });
@@ -840,6 +931,7 @@ function editInvoice(id) {
   document.getElementById('f-note').value = inv.note || '';
   document.getElementById('form-title').textContent = 'Rechnung bearbeiten';
   document.getElementById('btn-delete').style.display = 'inline-flex';
+  updateDispoButtonVisibility();
   renderShifts();
   showView('form');
 }
@@ -1162,6 +1254,7 @@ function collectInvoice() {
     nr: document.getElementById('f-nr').value,
     date: document.getElementById('f-date').value,
     due: document.getElementById('f-due').value,
+    clientId: document.getElementById('f-client-select') ? document.getElementById('f-client-select').value : '',
     cname: document.getElementById('f-cname').value,
     cstreet: document.getElementById('f-cstreet').value,
     cplz: document.getElementById('f-cplz').value,
@@ -1780,7 +1873,7 @@ function openSettings() {
   document.getElementById('s-contact').value = settings.contact || '';
   document.getElementById('s-steuernr').value = settings.steuernr || '';
   document.getElementById('s-rate').value = settings.defaultRate || '';
-  document.getElementById('s-payment-days').value = settings.paymentDays || 14;
+  document.getElementById('s-payment-days').value = settings.paymentDays || 30;
   document.getElementById('s-tax-note').value = settings.taxNote || defaultSettings.taxNote;
   document.getElementById('s-bank-holder').value = settings.bankHolder || '';
   document.getElementById('s-bank-name').value = settings.bankName || '';
@@ -1788,7 +1881,17 @@ function openSettings() {
   document.getElementById('s-bank-bic').value = settings.bankBic || '';
   document.getElementById('s-pin').value = settings.pin || '';
   renderClients();
+  renderDispoClientSelect();
   document.getElementById('settings-modal').classList.add('open');
+}
+
+function renderDispoClientSelect() {
+  const select = document.getElementById('s-dispo-client');
+  if (!select) return;
+  const clients = settings.clients || [];
+  select.innerHTML = '<option value="">— Keine / immer anzeigen —</option>' + clients.map(c =>
+    `<option value="${escapeAttr(c.id)}" ${settings.dispoClientId === c.id ? 'selected' : ''}>${escapeHtml(c.name || 'Ohne Namen')}</option>`
+  ).join('');
 }
 function closeSettings() { document.getElementById('settings-modal').classList.remove('open'); }
 
@@ -1797,14 +1900,14 @@ function renderClients() {
   const clients = settings.clients || [];
   if (!container) return;
   if (!clients.length) {
-    container.innerHTML = '<div class="hint">Noch keine Kund:innen gespeichert.</div>';
+    container.innerHTML = '<div class="hint">Noch keine Patientin/keinen Patienten gespeichert.</div>';
     return;
   }
   container.innerHTML = clients.map((client, index) => `
     <div class="rule-card">
       <div class="rule-card-header">
-        <div class="rule-name">${escapeHtml(client.name || 'Kunde')}</div>
-        <button class="btn btn-danger btn-sm" onclick="removeClientProfile(${index})">Entfernen</button>
+        <div class="rule-name">${escapeHtml(client.name || 'Patientin/Patient')}</div>
+        <button class="btn btn-danger btn-sm" onclick="removeClientProfile(${index})" ${clients.length <= 1 ? 'disabled' : ''}>Entfernen</button>
       </div>
       <div class="form-row">
         <div class="form-group" style="min-width:220px">
@@ -1853,25 +1956,34 @@ function renderClients() {
 function addClientProfile() {
   settings.clients = [...(settings.clients || []), {
     id: uid(),
-    name: 'Neuer Kunde',
+    name: 'Neue Patientin/Neuer Patient',
     street: '',
     plz: '',
     city: '',
     defaultRate: Number(settings.defaultRate || 0),
-    paymentDays: Number(settings.paymentDays || 14),
+    paymentDays: Number(settings.paymentDays || 30),
     intro: 'Abrechnung der erbrachten Pflegeleistungen.',
     note: 'Bitte überweisen Sie den Betrag ohne Abzug auf das unten genannte Konto.'
   }];
   renderClients();
+  renderDispoClientSelect();
 }
 
 function updateClientProfile(index, field, value) {
   settings.clients[index][field] = ['defaultRate','paymentDays'].includes(field) ? Number(value || 0) : value;
+  if (field === 'name') renderDispoClientSelect();
 }
 
 function removeClientProfile(index) {
+  if ((settings.clients || []).length <= 1) {
+    alert('Es muss mindestens eine Patientin/ein Patient vorhanden bleiben.');
+    return;
+  }
+  const removed = settings.clients[index];
   settings.clients.splice(index, 1);
+  if (removed && settings.dispoClientId === removed.id) settings.dispoClientId = '';
   renderClients();
+  renderDispoClientSelect();
 }
 
 function saveSettings() {
@@ -1883,17 +1995,20 @@ function saveSettings() {
     contact: document.getElementById('s-contact').value,
     steuernr: document.getElementById('s-steuernr').value,
     defaultRate: Number(document.getElementById('s-rate').value || 0),
-    paymentDays: Number(document.getElementById('s-payment-days').value || 14),
+    paymentDays: Number(document.getElementById('s-payment-days').value || 30),
     taxNote: document.getElementById('s-tax-note').value || defaultSettings.taxNote,
     bankHolder: document.getElementById('s-bank-holder').value,
     bankName: document.getElementById('s-bank-name').value,
     bankIban: document.getElementById('s-bank-iban').value,
     bankBic: document.getElementById('s-bank-bic').value,
     clients: normalizeClients(settings.clients),
+    dispoClientId: document.getElementById('s-dispo-client') ? document.getElementById('s-dispo-client').value : settings.dispoClientId,
     pin: (document.getElementById('s-pin').value || '').replace(/\D/g,'').slice(0,4)
   };
   localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
   shifts = shifts.map(s => ({ ...s, rate: Number(s.rate || settings.defaultRate || 0) }));
+  renderClientSelect(document.getElementById('f-client-select') ? document.getElementById('f-client-select').value : '');
+  updateDispoButtonVisibility();
   closeSettings();
   renderShifts();
 }
@@ -2218,11 +2333,11 @@ function confirmDispoImport() {
     startTime:  a.startTime,
     endDate:    a.endDate,
     endTime:    a.endTime,
-    rate:       Number(settings.defaultRate || 0),
+    rate:       getCurrentClientRate(),
     notes:      ''
   }));
 
-  document.getElementById('f-due').value = calcDueDate(document.getElementById('f-date').value, shifts);
+  document.getElementById('f-due').value = calcDueDate(document.getElementById('f-date').value, shifts, getCurrentClientPaymentDays());
   document.getElementById('dispo-overlay').remove();
   renderShifts();
 }
