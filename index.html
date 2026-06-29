@@ -587,8 +587,8 @@
     <div style="border-top:1px solid var(--border);padding-top:16px;margin-top:4px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between">
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
         <span style="font-size:0.8rem;color:var(--ink-faint);font-weight:600;text-transform:uppercase;letter-spacing:0.06em">Datensicherung</span>
-        <button class="btn btn-ghost btn-sm" onclick="showBackupModal('export')">⬇ Daten speichern</button>
-        <button class="btn btn-ghost btn-sm" onclick="showBackupModal('import')">⬆ Daten wiederherstellen</button>
+        <button class="btn btn-ghost btn-sm" onclick="showBackupModal('export')">⬇ Alles sichern</button>
+        <button class="btn btn-ghost btn-sm" onclick="showBackupModal('import')">⬆ Sicherung wiederherstellen</button>
       </div>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         <button class="btn btn-ghost" onclick="closeSettings()">Abbrechen</button>
@@ -2013,15 +2013,24 @@ function saveSettings() {
   renderShifts();
 }
 
+const BACKUP_VERSION = 'pflegrechnung-backup-v1';
+
 async function showBackupModal(mode) {
   if (mode === 'export') {
-    const name = (settings.name || 'einstellungen').replace(/\s+/g,'_').toLowerCase();
-    const fileName = `pflegrechnung_${name}.json`;
-    const data = JSON.stringify(settings, null, 2);
+    const name = (settings.name || 'sicherung').replace(/\s+/g,'_').toLowerCase();
+    const stamp = today();
+    const fileName = `pflegrechnung_backup_${name}_${stamp}.json`;
+    const payload = {
+      version: BACKUP_VERSION,
+      exportedAt: new Date().toISOString(),
+      settings,
+      invoices
+    };
+    const data = JSON.stringify(payload, null, 2);
     const file = new File([data], fileName, { type: 'application/json' });
     // iOS / Android: nativer Teilen-Dialog (E-Mail, Dateien, AirDrop …)
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      try { await navigator.share({ files: [file], title: 'PflegeRechnung Einstellungen' }); return; }
+      try { await navigator.share({ files: [file], title: 'PflegeRechnung Datensicherung' }); return; }
       catch(e) { if (e.name === 'AbortError') return; }
     }
     // Desktop-Fallback: Datei herunterladen
@@ -2032,7 +2041,7 @@ async function showBackupModal(mode) {
     return;
   }
 
-  // Wiederherstellen: Datei auswählen oder Text einfügen
+  // Wiederherstellen: Datei auswählen
   const existing = document.getElementById('backup-modal');
   if (existing) existing.remove();
   const overlay = document.createElement('div');
@@ -2042,7 +2051,7 @@ async function showBackupModal(mode) {
     <div style="background:var(--warm-white);border-radius:20px;padding:28px;width:100%;max-width:480px;box-shadow:0 20px 60px rgba(0,0,0,0.2)">
       <h2 style="font-family:'Playfair Display',serif;font-size:1.3rem;margin-bottom:12px">Daten wiederherstellen</h2>
       <p style="font-size:0.85rem;color:var(--ink-soft);margin-bottom:16px">
-        Wähle die gespeicherte Backup-Datei aus.
+        Wähle die gespeicherte Sicherungsdatei aus. Einstellungen <strong>und</strong> alle Rechnungen werden wiederhergestellt.
       </p>
       <label class="btn btn-primary" style="width:100%;justify-content:center;cursor:pointer">
         📂 Datei auswählen
@@ -2062,13 +2071,28 @@ function restoreFromFile(input) {
   reader.onload = e => {
     try {
       const raw = JSON.parse(e.target.result);
-      settings = { ...structuredClone(defaultSettings), ...raw, clients: normalizeClients(raw.clients) };
+
+      // Neues Format (v1): { version, settings, invoices }
+      // Altes Format (vor der Erweiterung): die Einstellungen direkt als Objekt
+      const isFullBackup = raw && typeof raw === 'object' && raw.settings && Array.isArray(raw.invoices);
+      const rawSettings = isFullBackup ? raw.settings : raw;
+
+      settings = { ...structuredClone(defaultSettings), ...rawSettings, clients: normalizeClients(rawSettings.clients) };
       localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
+
+      if (isFullBackup) {
+        invoices = Array.isArray(raw.invoices) ? raw.invoices : [];
+        saveAllInvoices();
+      }
+
       document.getElementById('backup-modal').remove();
       openSettings();
-      alert('Daten erfolgreich wiederhergestellt.');
+      renderList();
+      alert(isFullBackup
+        ? `Daten erfolgreich wiederhergestellt: Einstellungen + ${invoices.length} Rechnung${invoices.length !== 1 ? 'en' : ''}.`
+        : 'Einstellungen wiederhergestellt (diese Sicherungsdatei enthielt keine Rechnungen).');
     } catch {
-      alert('Fehler: Bitte nur eine gültige Backup-Datei verwenden.');
+      alert('Fehler: Bitte nur eine gültige Sicherungsdatei verwenden.');
     }
   };
   reader.readAsText(file);
