@@ -669,7 +669,8 @@ function normalizeClients(clients) {
     defaultRate: Number(client.defaultRate ?? 0),
     paymentDays: Number(client.paymentDays ?? 0),
     intro: client.intro || '',
-    note: client.note || ''
+    note: client.note || '',
+    surchargeRules: Array.isArray(client.surchargeRules) ? client.surchargeRules : structuredClone(SURCHARGE_RULES)
   })).filter(client => client.name || client.street || client.city || client.note || client.intro);
 }
 
@@ -695,7 +696,8 @@ function loadSettings() {
         defaultRate: Number(s.defaultRate || defaultSettings.defaultRate || 0),
         paymentDays: Number(s.paymentDays || defaultSettings.paymentDays || 30),
         intro: 'Abrechnung der erbrachten Pflegeleistungen.',
-        note: 'Bitte überweisen Sie den Betrag ohne Abzug auf das unten genannte Konto.'
+        note: 'Bitte überweisen Sie den Betrag ohne Abzug auf das unten genannte Konto.',
+        surchargeRules: structuredClone(SURCHARGE_RULES)
       };
       s.clients = [legacy];
       if (!s.dispoClientId) s.dispoClientId = legacy.id;
@@ -1113,6 +1115,7 @@ function calculateShift(shift) {
   }
 
   const hourlyRate = Number(shift.rate || 0);
+  const activeRules = getCurrentClient()?.surchargeRules || SURCHARGE_RULES;
   const breakdownMap = new Map();
   let cursor = new Date(start);
   let curDateStr = '', curIsHoliday = false;
@@ -1126,7 +1129,7 @@ function calculateShift(shift) {
     const dateStr = localISO(cursor);
     if (dateStr !== curDateStr) { curDateStr = dateStr; curIsHoliday = isHoliday(dateStr); }
 
-    SURCHARGE_RULES.forEach(rule => {
+    activeRules.forEach(rule => {
       if (ruleMatches(rule, minuteOfDay, weekday, curIsHoliday)) {
         const amount = hourlyRate / 60 * (Number(rule.percent || 0) / 100);
         result.surchargeAmount += amount;
@@ -1968,6 +1971,26 @@ function renderClients() {
           <textarea rows="3" oninput="updateClientProfile(${index}, 'note', this.value)">${escapeHtml(client.note || '')}</textarea>
         </div>
       </div>
+      <div style="margin-top:16px">
+        <div style="font-weight:600;margin-bottom:8px;font-size:0.95em">Zuschlagsregeln</div>
+        ${(client.surchargeRules || SURCHARGE_RULES).map((rule, ri) => `
+        <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px;padding:10px;background:var(--bg);border-radius:8px;border:1px solid var(--border)">
+          <div style="font-weight:500;min-width:110px">${escapeHtml(rule.name)}</div>
+          <div style="display:flex;align-items:center;gap:4px">
+            <input type="number" min="0" max="300" step="1" value="${Number(rule.percent||0)}"
+              style="width:64px"
+              oninput="updateClientSurcharge(${index},${ri},'percent',this.value)"> %
+          </div>
+          ${rule.type === 'night' ? `
+          <div style="display:flex;align-items:center;gap:4px;font-size:0.9em">
+            <input type="time" value="${escapeAttr(rule.startTime||'20:00')}" style="width:90px"
+              oninput="updateClientSurcharge(${index},${ri},'startTime',this.value)">
+            –
+            <input type="time" value="${escapeAttr(rule.endTime||'06:00')}" style="width:90px"
+              oninput="updateClientSurcharge(${index},${ri},'endTime',this.value)">
+          </div>` : ''}
+        </div>`).join('')}
+      </div>
     </div>
   `).join('');
 }
@@ -1982,7 +2005,8 @@ function addClientProfile() {
     defaultRate: Number(settings.defaultRate || 0),
     paymentDays: Number(settings.paymentDays || 30),
     intro: 'Abrechnung der erbrachten Pflegeleistungen.',
-    note: 'Bitte überweisen Sie den Betrag ohne Abzug auf das unten genannte Konto.'
+    note: 'Bitte überweisen Sie den Betrag ohne Abzug auf das unten genannte Konto.',
+    surchargeRules: structuredClone(SURCHARGE_RULES)
   }];
   renderClients();
   renderDispoClientSelect();
@@ -1991,6 +2015,12 @@ function addClientProfile() {
 function updateClientProfile(index, field, value) {
   settings.clients[index][field] = ['defaultRate','paymentDays'].includes(field) ? Number(value || 0) : value;
   if (field === 'name') renderDispoClientSelect();
+}
+
+function updateClientSurcharge(clientIndex, ruleIndex, field, value) {
+  const rules = settings.clients[clientIndex].surchargeRules;
+  if (!rules || !rules[ruleIndex]) return;
+  rules[ruleIndex][field] = field === 'percent' ? Number(value || 0) : value;
 }
 
 function removeClientProfile(index) {
