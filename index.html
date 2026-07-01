@@ -1427,7 +1427,7 @@ async function buildInvoicePdfBlob(inv) {
     calc.breakdown.forEach(item => {
       ensureSpace(7);
       doc.setFont('helvetica', 'normal'); doc.setFontSize(8.3); doc.setTextColor(92, 82, 72);
-      doc.text(`↳ ${item.name} (${item.percent} %) · ${eur(rate * item.percent / 100)}/Std.`, marginX + 4, y + 3.5);
+      doc.text(`  >> ${item.name} (${item.percent} %) · ${eur(rate * item.percent / 100)}/Std.`, marginX + 4, y + 3.5);
       doc.text(minutesToHours(item.minutes), rightX - 28, y + 3.5, { align: 'right' });
       doc.text(eur(item.amount), rightX - 2, y + 3.5, { align: 'right' });
       doc.setTextColor(44, 40, 32);
