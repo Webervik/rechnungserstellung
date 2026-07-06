@@ -2333,14 +2333,13 @@ function _confirmMonthPick() {
 const DISPO_URL = 'https://raw.githubusercontent.com/webervik/personaldispo/main/daten.json';
 let _dispoPreselectedMonth = '';
 
-// Zuordnung: Kurzname in der Pflegedisposition → voller Name in der Rechnungsapp
+// Zuordnung: Name der Pflegerin im Dienstplan → Name, unter dem in der Rechnungsapp
+// abgerechnet wird. Nur nötig, wenn beide Namen NICHT identisch sind — alle anderen
+// Pflegerinnen werden direkt über ihren vollen Dienstplan-Namen gefunden.
 const DISPO_NAME_MAP = {
-  'Zuzana':  'Zuzana Karabincikova',
-  'Gülcan':  'Gülcan Hasret Bilir',
-  'Zandraa': 'Enkhtsatsral Zandraa - Göbel',
-  'Viktor':  'Viktor Weber',
-  'Zülfiye': 'Zülfiye Ciftci',
-  'Selma':   'Zülfiye Ciftci'
+  // Regina wird von ihrer Chefin Dajana Misch abgerechnet:
+  // trägt Dajana „Dajana Misch" in den Einstellungen ein, werden Reginas Dienste geladen.
+  'Regina Çiçek': 'Dajana Misch'
 };
 
 function showDispoModal() {
