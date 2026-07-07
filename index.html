@@ -2444,7 +2444,17 @@ async function loadDispoShifts(yearMonth) {
       cache: 'no-store'
     });
     if (res.status === 401 || res.status === 403 || res.status === 404) {
-      statusEl.textContent = 'Der Zugangsschlüssel ist ungültig oder abgelaufen. Bitte in den Einstellungen den aktuellen Schlüssel eintragen (bekommst du von Viktor).';
+      // Genaue Unterscheidung, damit Viktor die Ursache sofort sieht:
+      // 401 = Schlüssel falsch/abgelaufen · 404 = Schlüssel gültig, hat aber
+      // keinen Zugriff auf das private Repo (falscher Repo-Bereich beim Erstellen)
+      // · 403 = Zugriff verweigert (fehlende Contents-Leseberechtigung).
+      const hinweis = res.status === 404
+        ? 'Der Schlüssel hat keinen Zugriff auf den Dienstplan. Beim Erstellen muss „Only select repositories → dispo-daten" gewählt sein (nicht „Public repositories").'
+        : res.status === 403
+        ? 'Der Schlüssel darf den Dienstplan nicht lesen. Beim Erstellen muss unter Permissions „Contents: Read-only" gesetzt sein.'
+        : 'Der Schlüssel ist ungültig oder abgelaufen.';
+      statusEl.textContent = `${hinweis} (Fehler ${res.status}) Bitte bei Viktor melden.`;
+      console.warn('Dispo-Zugriff verweigert – HTTP', res.status);
       return;
     }
     if (!res.ok) throw new Error('HTTP ' + res.status);
