@@ -588,6 +588,13 @@
           <div class="hint">Der „Aus Dienstplan laden"-Button erscheint im Formular nur, wenn diese Patientin/dieser Patient ausgewählt ist.</div>
         </div>
       </div>
+      <div class="form-row" style="margin-bottom:14px">
+        <div class="form-group" style="flex:2">
+          <label>Dienstplan-Zugangsschlüssel</label>
+          <input type="password" id="s-dispo-token" placeholder="github_pat_…" autocomplete="off">
+          <div class="hint">Der Dienstplan ist aus Datenschutzgründen geschützt. Den Schlüssel bekommst du von Viktor — einmal eintragen, er bleibt auf diesem Gerät gespeichert.</div>
+        </div>
+      </div>
       <div id="clients-container"></div>
     </div>
 
@@ -634,6 +641,7 @@ const defaultSettings = {
   bankBic: '',
   clients: [],
   dispoClientId: '',
+  dispoToken: '',
   pin: '',
   lastBackupAt: ''
 };
@@ -1901,6 +1909,7 @@ function openSettings() {
   document.getElementById('s-bank-iban').value = settings.bankIban || '';
   document.getElementById('s-bank-bic').value = settings.bankBic || '';
   document.getElementById('s-pin').value = settings.pin || '';
+  document.getElementById('s-dispo-token').value = settings.dispoToken || '';
   renderClients();
   renderDispoClientSelect();
   renderLastBackupHint();
@@ -2052,6 +2061,7 @@ function saveSettings() {
     bankBic: document.getElementById('s-bank-bic').value,
     clients: normalizeClients(settings.clients),
     dispoClientId: document.getElementById('s-dispo-client') ? document.getElementById('s-dispo-client').value : settings.dispoClientId,
+    dispoToken: (document.getElementById('s-dispo-token').value || '').trim(),
     pin: (document.getElementById('s-pin').value || '').replace(/\D/g,'').slice(0,4)
   };
   localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
@@ -2330,7 +2340,9 @@ function _confirmMonthPick() {
 }
 
 // ── Dienstplan-Import aus Pflegedisposition ──────────────────────────────────
-const DISPO_URL = 'https://raw.githubusercontent.com/webervik/personaldispo/main/daten.json';
+// Dienstplan liegt aus Datenschutzgründen in einem PRIVATEN Repository —
+// Zugriff nur mit Zugangsschlüssel (Einstellungen → Dienstplan-Zugangsschlüssel).
+const DISPO_API_URL = 'https://api.github.com/repos/Webervik/dispo-daten/contents/daten.json';
 let _dispoPreselectedMonth = '';
 
 // Zuordnung: Name der Pflegerin im Dienstplan → Name, unter dem in der Rechnungsapp
@@ -2395,8 +2407,21 @@ async function loadDispoShifts(yearMonth) {
     return;
   }
 
+  const dispoToken = (settings.dispoToken || '').trim();
+  if (!dispoToken) {
+    statusEl.textContent = 'Der Dienstplan ist geschützt: Bitte zuerst den Zugangsschlüssel in den Einstellungen eintragen (bekommst du von Viktor).';
+    return;
+  }
+
   try {
-    const res = await fetch(DISPO_URL + '?t=' + Date.now());
+    const res = await fetch(DISPO_API_URL + '?t=' + Date.now(), {
+      headers: { 'Accept': 'application/vnd.github.raw+json', 'Authorization': 'Bearer ' + dispoToken },
+      cache: 'no-store'
+    });
+    if (res.status === 401 || res.status === 403 || res.status === 404) {
+      statusEl.textContent = 'Der Zugangsschlüssel ist ungültig oder abgelaufen. Bitte in den Einstellungen den aktuellen Schlüssel eintragen (bekommst du von Viktor).';
+      return;
+    }
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
 
