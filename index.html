@@ -1360,6 +1360,31 @@ async function buildInvoicePdfBlob(inv) {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const s = settings;
+
+  // Strukturierte Rechnungsdaten unsichtbar in die PDF-Metadaten einbetten:
+  // der Beihilfe Manager liest sie beim Import direkt aus, ganz ohne
+  // KI-Texterkennung (schneller, kostenlos, fehlerfrei). Base64, damit
+  // Umlaute und Sonderzeichen die PDF-Struktur nicht stören.
+  try {
+    const svcDates = (inv.shifts || []).map(sh => sh.startDate).filter(Boolean).sort();
+    const svcD = new Date((svcDates[0] || inv.date || today()) + 'T00:00:00');
+    const daten = {
+      quelle: 'PflegeRechnung Pro',
+      steller: (s.name || '').trim() || null,
+      kontoinhaber: (s.bankHolder || '').trim() || null,
+      iban: (s.bankIban || '').replace(/\s+/g, '') || null,
+      bic: (s.bankBic || '').trim() || null,
+      datum: inv.date || null,
+      betrag: Number(inv.total) || 0,
+      rnr: inv.nr || null,
+      zeitraum: `${MONTHS_DE[svcD.getMonth()]} ${svcD.getFullYear()}`,
+      kostenart: 'Pflege',
+      anmerkung: 'Pflegeleistungen (freiberufliche Pflegefachkraft)',
+      patient: (inv.cname || '').trim() || null
+    };
+    const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(daten))));
+    doc.setProperties({ subject: 'PFLEGEDATEN64:' + b64 });
+  } catch (e) { /* Einbettung ist optional — die PDF funktioniert auch ohne */ }
   const pageW = 210, marginX = 15, rightX = pageW - marginX;
   let y = 20;
 
