@@ -513,8 +513,18 @@
       </div>
       <div class="form-row" style="margin-top:14px">
         <div class="form-group" style="flex:2">
-          <label>Adresse</label>
-          <input type="text" id="s-addr" placeholder="Musterstraße 5, 10115 Berlin">
+          <label>Straße und Hausnummer</label>
+          <input type="text" id="s-street" placeholder="Musterstraße 5">
+        </div>
+        <div class="form-group">
+          <label>PLZ</label>
+          <input type="text" id="s-plz" placeholder="10115">
+        </div>
+      </div>
+      <div class="form-row" style="margin-top:14px">
+        <div class="form-group">
+          <label>Ort</label>
+          <input type="text" id="s-city" placeholder="Berlin">
         </div>
         <div class="form-group">
           <label>Kontakt</label>
@@ -629,7 +639,10 @@ const SURCHARGE_RULES = [
 const defaultSettings = {
   name: '',
   beruf: 'Freiberufliche Pflegefachkraft',
-  addr: '',
+  addr: '',            // Alt-Freitextfeld — bleibt als Rückfall/Kompatibilität
+  street: '',
+  plz: '',
+  city: '',
   contact: '',
   steuernr: '',
   defaultRate: 38,
@@ -690,6 +703,22 @@ function loadSettings() {
       ...raw,
       clients: normalizeClients(raw.clients)
     };
+    // Migration: früher gab es nur EIN Freitext-Adressfeld (addr). Damit PLZ und
+    // Ort nie mehr fehlen, wird es in Straße / PLZ / Ort aufgeteilt — eine
+    // 5-stellige PLZ dient als Anker. Ist keine PLZ erkennbar, bleibt der Text
+    // als Straße stehen (PLZ/Ort offen, die Nutzerin ergänzt sie einmalig).
+    if (!s.street && !s.plz && !s.city && (s.addr || '').trim()) {
+      const a = s.addr.trim();
+      const m = a.match(/\d{5}/);
+      if (m) {
+        s.plz = m[0];
+        s.street = a.slice(0, m.index).replace(/[,;\s]+$/, '').trim();
+        s.city = a.slice(m.index + 5).replace(/^[,;\s]+/, '').trim();
+      } else {
+        s.street = a;
+      }
+      localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(s));
+    }
     // Migration: bisher war die App auf eine einzige Patientin (Sarah Salin) fest
     // eingestellt. Damit bestehende Nutzerinnen keine Daten verlieren und ohne
     // Unterbrechung weiterarbeiten können, wird beim ersten Laden automatisch
@@ -715,6 +744,17 @@ function loadSettings() {
   } catch {
     return structuredClone(defaultSettings);
   }
+}
+
+// Absenderadresse als 1–2 Zeilen aus den strukturierten Feldern (Straße /
+// „PLZ Ort"), mit Rückfall auf das alte Freitextfeld addr.
+function senderAddressLines(s) {
+  const street = (s.street || '').trim();
+  const cityLine = `${(s.plz || '').trim()} ${(s.city || '').trim()}`.trim();
+  const lines = [street, cityLine].filter(Boolean);
+  if (lines.length) return lines;
+  const legacy = (s.addr || '').trim();
+  return legacy ? [legacy] : [];
 }
 
 function saveAllInvoices() {
@@ -1392,7 +1432,7 @@ async function buildInvoicePdfBlob(inv) {
   doc.setFont('helvetica', 'bold'); doc.setFontSize(15);
   doc.text(String(s.name || ''), marginX, y); y += 6;
   doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
-  [s.beruf, s.addr, s.contact, s.steuernr ? 'Steuernr.: ' + s.steuernr : ''].filter(Boolean).forEach(line => {
+  [s.beruf, ...senderAddressLines(s), s.contact, s.steuernr ? 'Steuernr.: ' + s.steuernr : ''].filter(Boolean).forEach(line => {
     doc.text(String(line), marginX, y); y += 4.6;
   });
 
@@ -1699,7 +1739,7 @@ function _buildPrintHtml(inv) {
     <div class="header">
       <div class="from">
         <h1>${escapeHtml(s.name || '')}</h1>
-        <p>${[s.beruf, s.addr, s.contact, s.steuernr ? 'Steuernr.: ' + s.steuernr : ''].filter(Boolean).map(escapeHtml).join('<br>')}</p>
+        <p>${[s.beruf, ...senderAddressLines(s), s.contact, s.steuernr ? 'Steuernr.: ' + s.steuernr : ''].filter(Boolean).map(escapeHtml).join('<br>')}</p>
       </div>
       <div class="inv-block">
         <div class="inv-label">Rechnung</div>
@@ -1810,10 +1850,7 @@ function renderPreview(inv) {
         <div class="invoice-from">
           <h2>${escapeHtml(s.name || 'Ihr Name')}</h2>
           <p>
-            ${escapeHtml(s.beruf || '')}<br>
-            ${escapeHtml(s.addr || '')}<br>
-            ${escapeHtml(s.contact || '')}<br>
-            ${s.steuernr ? 'Steuernr.: ' + escapeHtml(s.steuernr) : ''}
+            ${[s.beruf, ...senderAddressLines(s), s.contact, s.steuernr ? 'Steuernr.: ' + s.steuernr : ''].filter(Boolean).map(escapeHtml).join('<br>')}
           </p>
         </div>
         <div class="invoice-number-block">
@@ -1923,7 +1960,9 @@ function buildQrImageUrl(payload) {
 function openSettings() {
   document.getElementById('s-name').value = settings.name || '';
   document.getElementById('s-beruf').value = settings.beruf || '';
-  document.getElementById('s-addr').value = settings.addr || '';
+  document.getElementById('s-street').value = settings.street || '';
+  document.getElementById('s-plz').value = settings.plz || '';
+  document.getElementById('s-city').value = settings.city || '';
   document.getElementById('s-contact').value = settings.contact || '';
   document.getElementById('s-steuernr').value = settings.steuernr || '';
   document.getElementById('s-rate').value = settings.defaultRate || '';
@@ -2074,7 +2113,14 @@ function saveSettings() {
     ...settings,
     name: document.getElementById('s-name').value,
     beruf: document.getElementById('s-beruf').value,
-    addr: document.getElementById('s-addr').value,
+    street: document.getElementById('s-street').value.trim(),
+    plz: document.getElementById('s-plz').value.trim(),
+    city: document.getElementById('s-city').value.trim(),
+    // addr bleibt als zusammengesetzter Rückfall erhalten (Kompatibilität)
+    addr: [
+      document.getElementById('s-street').value.trim(),
+      `${document.getElementById('s-plz').value.trim()} ${document.getElementById('s-city').value.trim()}`.trim()
+    ].filter(Boolean).join(', '),
     contact: document.getElementById('s-contact').value,
     steuernr: document.getElementById('s-steuernr').value,
     defaultRate: Number(document.getElementById('s-rate').value || 0),
